@@ -93,7 +93,8 @@ def test():
   nested = False
 
   # invert CMatrix
-  useRD = True # to use eigen decomposition for inverting symmetric C matrix
+  useRD = False # The RDInvert method appears to be flawed, as it seems to produce matrices that
+    #are not positive definite. please fix.# True # to use eigen decomposition for inverting symmetric C matrix
   if newInverse:
     print 'loading C matrix from file ',cMatrixFile
     cMatrix = mcm.symLoad(cMatrixFile)

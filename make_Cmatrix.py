@@ -220,6 +220,9 @@ def RDInvert(eigVals, eigVecs):
       numpy array of eigenvectors of C matrix
     returns:
       the inverse of the Covariance matrix
+
+    NOTE:  THIS METHOD APPEARS TO CREATE ERRONEOUS MATRICES.
+      THIS IS BASED ON TESTING USING 'CHISQUARE_TEST.PY'.  NEEDS TO BE FIXED.  2015.12.02
   """
   diagInv = np.diag(eigVals**-1)
   eigVecsTranspose = np.transpose(eigVecs)
