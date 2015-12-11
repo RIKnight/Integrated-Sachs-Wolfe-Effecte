@@ -15,6 +15,10 @@
     Added RDInvert; ZK, 2015.10.29
     Switched pyfits to astropy.io.fits; ZK, 2015.11.09
     Switched showCl scaling to l(l+1) from l(l-1); ZK, 2015.11.13
+    Added beamSmooth, pixWin parameters to makeCmatrix;
+      changed highpass parameter default to 0; ZK, 2015.12.04
+    Added cMatCorrect function; ZK, 2015.12.08
+    Added choInvert function; ZK, 2015.12.09
 
 """
 
@@ -110,7 +114,7 @@ def powerArray(x,powMax):
   return pows
 
 
-def makeCmatrix(maskFile, powerFile, highpass = 12):
+def makeCmatrix(maskFile, powerFile, highpass = 0, beamSmooth = True, pixWin = True):
   """
     function to make the covariance matrix
     maskFile is a healpix fits file name that contains 1 where a pixel is to be included
@@ -118,7 +122,14 @@ def makeCmatrix(maskFile, powerFile, highpass = 12):
       Must be Nested and NSIDE=64
     powerFile is a CAMB CMB power spectrum file
     highpass is the lowest multipole l to not be zeroed out.
-      Default is 12
+      Default is 0
+    beamSmooth determines whether to use beamsmoothing on C_l,
+      also control lmax
+      Default is True, with lmax = 250
+    pixWin determines whether to use the pixel window,
+      also controls lmax
+      Default is True, with lmax = 250
+    If both beamSmooth and pixWin are false, then lmax = 2000
     returns the covariance matrix
   """
   # read mask file
@@ -134,8 +145,8 @@ def makeCmatrix(maskFile, powerFile, highpass = 12):
   # isolate pixels indicated by mask
   #myGl = np.array([gl[index] for index in range(gl.size) if mask[index] == 1])
   #myGb = np.array([gb[index] for index in range(gb.size) if mask[index] == 1])
-  myGl = gl[np.where(mask==1)]
-  myGb = gb[np.where(mask==1)]
+  myGl = gl[np.where(mask)]
+  myGb = gb[np.where(mask)]
   #print 'mask size: ',myGl.size,' or ',myGb.size
 
   # convert to unit vectors
@@ -156,17 +167,30 @@ def makeCmatrix(maskFile, powerFile, highpass = 12):
   print cosThetaArray
   
   # create beam and pixel window expansions and other factor
-  lmax = 250
-  #highpass=0 # for adding to other cmatrix later
-  #lmax=11
-  pbeam = hp.gauss_beam(5./60*np.pi/180,lmax=lmax)   # 5 arcmin beam; SMICA already has
-  mbeam = hp.gauss_beam(120./60*np.pi/180,lmax=lmax) # 120 arcmin to be below W_l
-  Wpix = hp.pixwin(64)
-  B_l = mbeam/pbeam
-  W_l = Wpix[:lmax+1]
+  lmax = 2000
+  print "lmax cutoff imposed at l=",lmax
+  if pixWin:
+    lmax = 250
+    Wpix = hp.pixwin(64)
+    W_l = Wpix[:lmax+1]
+  else:
+    W_l = 1.0
+  if beamSmooth:
+    lmax = 250
+    forSMICA = False # if using C matrix with SMICA map, set to True.  if using with sims, set to False
+    mbeam = hp.gauss_beam(120./60*np.pi/180,lmax=lmax) # 120 arcmin to be below W_l
+    if forSMICA:
+        pbeam = hp.gauss_beam(5./60*np.pi/180,lmax=lmax)   # 5 arcmin beam; SMICA already has
+        B_l = mbeam/pbeam
+    else:
+        B_l = mbeam
+  else:
+    B_l = 1.0
   fac_l = (2*ell[:lmax+1]+1)/(4*np.pi)
   C_l = np.concatenate((np.zeros(highpass),C_l[highpass:]))
   preFac_l = fac_l *B_l**2 *W_l**2 *C_l[:lmax+1]
+
+  # should I convert C_l units from K to \mu K?
 
   # evaluate legendre series with legval
   covArray = np.zeros([vecSize,vecSize])
@@ -178,6 +202,28 @@ def makeCmatrix(maskFile, powerFile, highpass = 12):
       covArray[row,column] = covArray[column,row]
 
   return covArray
+
+def cMatCorrect(cMatrix):
+    """
+    Purpose:
+        corrects C matrix for effects of estimating the mean of the sample from the sample iteslf
+        Follows Granett, Nerynck, and Szapudi 2009, section 4.1
+    Args:
+        cMatrix:  a numpy array containing the covariance matrix to correct
+
+    Returns:
+        a numpy array containing the corrected C matrix
+    """
+    size = cMatrix.shape[0] #array is square
+    c1 = np.sum(cMatrix,axis=0) #adds column of printed matrix, row should remain
+    c2 = np.sum(cMatrix,axis=1) #adds row of printed matrix, column should remain
+    c3 = np.sum(cMatrix)        #adds entire matrix, is a number
+    # c1 is ok for subtraction via broadcasting rules; c2 needs modification
+    c2mat = np.reshape(np.repeat(c2,size),(size,size))
+
+    cMatrixCorrected = cMatrix - c1/size - c2mat/size + c3/size**2
+    return cMatrixCorrected
+
 
 def subMatrix(maskFile,bigMaskFile,cMatrixFile):
   """
@@ -221,13 +267,27 @@ def RDInvert(eigVals, eigVecs):
     returns:
       the inverse of the Covariance matrix
 
-    NOTE:  THIS METHOD APPEARS TO CREATE ERRONEOUS MATRICES.
-      THIS IS BASED ON TESTING USING 'CHISQUARE_TEST.PY'.  NEEDS TO BE FIXED.  2015.12.02
   """
   diagInv = np.diag(eigVals**-1)
   eigVecsTranspose = np.transpose(eigVecs)
   cInv = np.dot(np.dot(eigVecs,diagInv),eigVecsTranspose)
   return cInv
+
+def choInvert(cMatrix):
+  """
+  Purpose:
+      Function to find inverse of symmetric matrix using Cholesky decomposition
+  Args:
+      cMatrix: the matrix to invert
+
+  Returns:
+      The inverse of cMatrix
+  """
+  L = np.linalg.cholesky(cMatrix) # defined for real symmetric matrix: cMatrix = L * L.T
+  Linv = np.linalg.inv(L)  # uses LU decomposition, but L is already L
+  cMatInv = np.dot(Linv.T,Linv)
+  return cMatInv
+
 
 def test():
   """
