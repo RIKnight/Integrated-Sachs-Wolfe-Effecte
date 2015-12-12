@@ -19,6 +19,9 @@
       changed highpass parameter default to 0; ZK, 2015.12.04
     Added cMatCorrect function; ZK, 2015.12.08
     Added choInvert function; ZK, 2015.12.09
+    Added lmax and useMicro parameters to makeCmatrix;
+      Fixed indexing problem where makeCmatrix was missing
+        diagonal below main; ZK, 2015.12.11
 
 """
 
@@ -114,23 +117,26 @@ def powerArray(x,powMax):
   return pows
 
 
-def makeCmatrix(maskFile, powerFile, highpass = 0, beamSmooth = True, pixWin = True):
+def makeCmatrix(maskFile, powerFile, highpass = 0, beamSmooth = True, pixWin = True, lmax=2000, useMicro=False):
   """
     function to make the covariance matrix
-    maskFile is a healpix fits file name that contains 1 where a pixel is to be included
+    maskFile: a healpix fits file name that contains 1 where a pixel is to be included
       in covariance matrix and 0 otherwise
       Must be Nested and NSIDE=64
-    powerFile is a CAMB CMB power spectrum file
-    highpass is the lowest multipole l to not be zeroed out.
+    powerFile: a CAMB CMB power spectrum file with units K**2
+    highpass: the lowest multipole l to not be zeroed out.
       Default is 0
-    beamSmooth determines whether to use beamsmoothing on C_l,
+    beamSmooth: determines whether to use beamsmoothing on C_l,
       also control lmax
       Default is True, with lmax = 250
-    pixWin determines whether to use the pixel window,
+    pixWin: determines whether to use the pixel window,
       also controls lmax
       Default is True, with lmax = 250
-    If both beamSmooth and pixWin are false, then lmax = 2000
-    returns the covariance matrix
+    lmax: maximum l value in Legendre series.
+      Note: this value is overridden by beamSmooth and pixWin lmax settings
+      Default is 2000
+    useMicro: converts power spectrum units from K**2 to microK**2 before calculating matrix
+    returns the covariance matrix, with units K**2 or microK**2, depending on value of useMicro parameter
   """
   # read mask file
   mask = hp.read_map(maskFile,nest=True)
@@ -167,8 +173,7 @@ def makeCmatrix(maskFile, powerFile, highpass = 0, beamSmooth = True, pixWin = T
   print cosThetaArray
   
   # create beam and pixel window expansions and other factor
-  lmax = 2000
-  print "lmax cutoff imposed at l=",lmax
+  #lmax = 2000
   if pixWin:
     lmax = 250
     Wpix = hp.pixwin(64)
@@ -186,11 +191,13 @@ def makeCmatrix(maskFile, powerFile, highpass = 0, beamSmooth = True, pixWin = T
         B_l = mbeam
   else:
     B_l = 1.0
+  print "lmax cutoff imposed at l=",lmax
+
   fac_l = (2*ell[:lmax+1]+1)/(4*np.pi)
   C_l = np.concatenate((np.zeros(highpass),C_l[highpass:]))
+  if useMicro: # convert C_l units from K**2 to muK**2:
+    C_l = C_l * 1e12
   preFac_l = fac_l *B_l**2 *W_l**2 *C_l[:lmax+1]
-
-  # should I convert C_l units from K to \mu K?
 
   # evaluate legendre series with legval
   covArray = np.zeros([vecSize,vecSize])
@@ -198,8 +205,9 @@ def makeCmatrix(maskFile, powerFile, highpass = 0, beamSmooth = True, pixWin = T
     print 'starting row ',row
     for column in range(row,vecSize):
       covArray[row,column] = legval(cosThetaArray[row,column],preFac_l)
-    for column in range(row-1):
-      covArray[row,column] = covArray[column,row]
+    #for column in range(row):
+    #  covArray[row,column] = covArray[column,row]
+  covArray = covArray + covArray.T - np.diag(np.diag(covArray))
 
   return covArray
 
@@ -292,6 +300,8 @@ def choInvert(cMatrix):
 def test():
   """
     code for testing the other functions in this module
+    Dec. 2015:  This testing function has fallen by the wayside and no longer appears
+      to test all the functions.  Should test all of them.  ZK
   """
   # test getCl
   ISWoutFile = 'ISWout_scalCls.fits'

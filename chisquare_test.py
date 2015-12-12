@@ -9,6 +9,8 @@
   MODIFICATION HISTORY:
     Written by Z Knight, 2015.11.30
     Added C matrix correction routine; ZK 2015.12.08
+    Switched to Cholesky Decomposition Inverse; ZK, 2015.12.11
+    Added useMicro, doBeamSmooth, doPixWin parameters; ZK, 2015.12.11
 
 """
 
@@ -21,19 +23,19 @@ import make_Cmatrix as mcm
 
 def test(case = 1,nTrials=1000):
     """
-        function for testing the other functions in this file
+        function for testing the expectation value <T*C**-1*T> = N_pix
         case: selects which set of files to use for test
         nTrials: the number of random skies to use
     """
 
     # get Cl
     ISWoutFile = 'ISWout_scalCls.fits'
-    ell, temps = mcm.getCl(ISWoutFile)
+    ell, temps = mcm.getCl(ISWoutFile) # temps has units K**2
 
     # show Cl
     # mcm.showCl(ell,temps)
 
-    # mask to indicate which pixels to include in data array
+    # dictionary of sets of file names
     PSG = '/Data/PSG/'
     fileSets = {
     100:(PSG+'ten_point/ISWmask_din1_R010.fits','covar6110_R010_nhp.npy','invCovar_R010_nhp.npy'), #LU; lmax250, with BW
@@ -60,18 +62,27 @@ def test(case = 1,nTrials=1000):
     maskFile,saveMatrixFile,saveInvCMFile = fileSets.get(case)
 
     newMatrix = False#True
-    useRD = True
+    useMicro = False#True
+    doBeamSmooth = True#False
+    doPixWin = False
+    useRD = False#True #Overrides useCho
+    useCho = True # overrides default: use LU
     if newMatrix:
         startTime = time.time()
         print 'starting C matrix creation...'
-        covMat = mcm.makeCmatrix(maskFile, ISWoutFile, highpass=0, beamSmooth=True, pixWin=False)
+        covMat = mcm.makeCmatrix(maskFile, ISWoutFile, highpass=0, beamSmooth=doBeamSmooth,
+                                 pixWin=doPixWin, lmax=250, useMicro=useMicro)
         #covMat = mcm.cMatCorrect(covMat) #correction due to estimating mean from sample
         mcm.symSave(covMat, saveMatrixFile)
+
         if useRD:
             print 'starting eigen decomposition...'
             w, v = np.linalg.eigh(covMat)
             print 'starting RD inversion...'
             invCMat = mcm.RDInvert(w, v)
+        elif useCho:
+            print 'starting Cholesky inversion...'
+            invCMat = mcm.choInvert(covMat)
         else:
             print 'starting LU inversion...'
             invCMat = np.linalg.inv(covMat)
@@ -85,7 +96,7 @@ def test(case = 1,nTrials=1000):
     # load the mask - nest=True for mask!
     mask = hp.read_map(maskFile, nest=True)
 
-    #nTrials = 100
+    # apply gaussbeam before synfast?
     #lmax = 250
     #Wpix = hp.pixwin(64)
     #W_l = Wpix[:lmax+1]
@@ -93,12 +104,28 @@ def test(case = 1,nTrials=1000):
     #B_l = mbeam[:lmax+1]
     #temps = temps[:lmax+1]*B_l**2 #*W_l**2
 
+    #nTrials = 1000
+    NSIDE=64
+    lmax=250
+    fwhmMin = 120.
+    fwhmRad = fwhmMin/60.*np.pi/180.
+
     chiSqResults = np.zeros(nTrials)
     for trial in range(nTrials):
         print 'starting trial ',trial+1,' of ',nTrials
-        fwhmRad = 2.0*np.pi/180.
-        map = hp.synfast(temps, 64, lmax=250, fwhm=fwhmRad)#, pixwin=True)#   #make these match what was used in make_Cmatrix
-        Tvec = map[np.where(mask)]
+        if doBeamSmooth:
+            if doPixWin:
+                map = hp.synfast(temps, NSIDE, lmax=lmax, fwhm=fwhmRad, pixwin=True)
+            else:
+                map = hp.synfast(temps, NSIDE, lmax=lmax, fwhm=fwhmRad)
+        else:
+            if doPixWin:
+                map = hp.synfast(temps, NSIDE, lmax=lmax, pixwin=True)
+            else:
+                map = hp.synfast(temps, NSIDE, lmax=lmax)
+        Tvec = map[np.where(mask)] #apply mask
+        if useMicro:
+            Tvec = Tvec*1e6 #convert K to microK
         chiSqResults[trial] = np.dot(Tvec,np.dot(invCMat,Tvec))
     csqMean = np.mean(chiSqResults)
     print 'average of chiSquared results: ',csqMean

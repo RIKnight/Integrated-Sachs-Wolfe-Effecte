@@ -12,6 +12,7 @@
     Written by Z Knight, 2015.09.24
     Fixed Kelvin vs. microKelvin problem; ZK, 2015.09.29
     Added fit verification testing; ZK, 2015.10.04
+    Added option for cMatrix units in microK**2; ZK, 2015.10.11
 
 """
 
@@ -34,6 +35,8 @@ def templateFit(cMatInv,ISW,CMB):
         where covariance matrix was calculated from C_l in Kelvin**2
       ISW: (numpy vector) the ISW template in Kelvin
       CMB: (numpy vector) the observed CMB in Kelvin
+    Alternately:
+      all Kelvin units can be replaced by microKelvin
     RETURNS:
       amp,var: the amplitude and variance of the fit
   """
@@ -51,6 +54,7 @@ def test():
   doHighPass = True
   useBigMask = False
   newInverse = False
+  matUnitMicro = False # option for matrices newer than 2015.12.11
   
   # file names
   PSG = '/shared/Data/PSG/'
@@ -83,30 +87,34 @@ def test():
       #iCMatFile = 'invCovar_R010.npy'
       iCMatFile = 'invCovar_R010_RD.npy'
     else:
-      cMatrixFile = 'covar6110_R010_nhp.npy' #haven't made this yet
+      cMatrixFile = 'covar6110_R010_nhp.npy'
       iCMatFile = 'invCovar_R010_nhp.npy'
 
 
-  # CMBFiles have unit microK, ISWFiles have unit K, and cMatrixFile has units K**2
+  # CMBFiles have unit microK, ISWFiles have unit K, and cMatrixFile has units K**2 or microK**2
 
   # nested vs ring parameter for loading data
   nested = False
 
-  # invert CMatrix
-  useRD = False # The RDInvert method appears to be flawed, as it seems to produce matrices that
-    #are not positive definite. please fix.# True # to use eigen decomposition for inverting symmetric C matrix
+  # invert CMatrix; default: use LU
+  useRD = False#True # Overrides useCho
+  useCho = True#False
   if newInverse:
     print 'loading C matrix from file ',cMatrixFile
     cMatrix = mcm.symLoad(cMatrixFile)
+    # 2015.12.11: new matrices may have units microK**2 or K**2. Older matrices are all in K**2
 
     startTime = time.time()
     if useRD:
       print 'calculating eigen decomposition...'
       w,v = np.linalg.eigh(cMatrix)
-      print 'starting matrix inversion...'
+      print 'starting matrix (eigen) inversion...'
       cMatInv = mcm.RDinvert(w,v)
+    elif useCho:
+      print 'starting matrix (Cholesky) inversion...'
+      cMatInv = mcm.choInvert(cMatrix)
     else:
-      print 'starting matrix inversion...'
+      print 'starting matrix (LU) inversion...'
       cMatInv = np.linalg.inv(cMatrix)
     print 'time elapsed for inversion: ',(time.time()-startTime)/60.,' minutes' 
       #took about 2 minutes for np.linalg.inv on 6110**2 matrix
@@ -125,8 +133,11 @@ def test():
       print 'starting with ',ISWfile,' and ',CMBfile
       CMB = hp.read_map(CMBfile,nest=nested)
       CMB = CMB[np.where(mask)]
-  
-      amp,var = templateFit(cMatInv,ISW,CMB*1e-6) # CMB from microK to K
+
+      if matUnitMicro:
+        amp,var = templateFit(cMatInv,ISW*1e6,CMB) # ISW from K to microK
+      else:
+        amp,var = templateFit(cMatInv,ISW,CMB*1e-6) # CMB from microK to K
       print 'amplitude: ',amp,', variance: ',var
   
 
@@ -169,8 +180,11 @@ def test():
         print 'starting with ',ISWfile,' and ',CMBfile
         CMB = hp.read_map(CMBfile,nest=nested)
         CMB = CMB[np.where(mask)]
-    
-        amp,var = templateFit(cMatInv,ISW,CMB)
+
+        if matUnitMicro:
+          amp,var = templateFit(cMatInv,ISW*1e6,CMB*1e6) #ISW and CMB from K to microK
+        else:
+          amp,var = templateFit(cMatInv,ISW,CMB)
         print 'amplitude: ',amp,', variance: ',var
         results[iIndex,cIndex,:] = [amp,var]
 
