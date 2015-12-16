@@ -11,6 +11,7 @@
     Added C matrix correction routine; ZK 2015.12.08
     Switched to Cholesky Decomposition Inverse; ZK, 2015.12.11
     Added useMicro, doBeamSmooth, doPixWin parameters; ZK, 2015.12.11
+    Added cInvT procedure; ZK, 2015.12.14
 
 """
 
@@ -20,8 +21,40 @@ import healpy as hp
 import time  # for measuring duration
 import make_Cmatrix as mcm
 
+def cInvT_test(cInv,T):
+    """
+    Function for examining intermediate C**-1*T values
 
-def test(case = 1,nTrials=1000):
+    Args:
+        cInv:
+        T:
+
+    Returns:
+        nothing
+    """
+    cInvT = np.dot(cInv,T)
+    #print np.array(cInv).shape
+    plt.plot(cInvT)
+    plt.title('C**-1 *T testing')
+    plt.show()
+
+def cInvT(covMat,Tvec):
+    """
+    Purpose:
+        calculates C**-1*T using "left inverse" of T (a row vector)
+    Args:
+        covMat: numpy array containing a covariance matrix of field statistics
+        Tvec: numpy array containing a column vector of field values
+    Note:
+        this function is copied int template_fit.py
+    Returns:
+        numpy array of C**-1*T (a column vector)
+    """
+    TInv = Tvec.T/np.dot(Tvec,Tvec)    # create left inverse of Tvec
+    TInvC = np.dot(TInv,covMat)        # left multiply
+    return TInvC.T/np.dot(TInvC,TInvC) # return right inverse
+
+def test(case = 10,nTrials=1000):
     """
         function for testing the expectation value <T*C**-1*T> = N_pix
         case: selects which set of files to use for test
@@ -54,18 +87,42 @@ def test(case = 1,nTrials=1000):
     12:(PSG+'small_masks/ISWmask_din1_R060_trunc3.fits','covar500b.npy','invCovar500b.npy'), #lmax250, no BW
     13:(PSG+'small_masks/ISWmask_din1_R060_trunc1.fits','covar478c.npy','invCovar478c.npy'), #lmax250, with B
     14:(PSG+'small_masks/ISWmask_din1_R060_trunc2.fits','covar525c.npy','invCovar525c.npy'), #lmax250, with B
-    15:(PSG+'small_masks/ISWmask_din1_R060_trunc3.fits','covar500c.npy','invCovar500c.npy') #lmax250, with B
+    15:(PSG+'small_masks/ISWmask_din1_R060_trunc3.fits','covar500c.npy','invCovar500c.npy'), #lmax250, with B
+    16:(PSG+'small_masks/ISWmask_din1_R060_trunc1.fits','covar478d.npy','invCovar478d.npy'), #lmax250, no B, with W
+    17:(PSG+'small_masks/ISWmask_din1_R060_trunc2.fits','covar525d.npy','invCovar525d.npy'), #lmax250, no B, with W
+    18:(PSG+'small_masks/ISWmask_din1_R060_trunc3.fits','covar500d.npy','invCovar500d.npy'), #lmax250, no B, with W
+    19:(PSG+'small_masks/ISWmask_din1_R060_trunc1.fits','covar478e.npy','invCovar478e.npy'), #lmax250, with BW
+    20:(PSG+'small_masks/ISWmask_din1_R060_trunc2.fits','covar525e.npy','invCovar525e.npy'), #lmax250, with BW
+    21:(PSG+'small_masks/ISWmask_din1_R060_trunc3.fits','covar500e.npy','invCovar500e.npy') #lmax250, with BW
 
     }
+    BWcontrol = {
+        102:(True,True),
+        10:(False,False),
+        11:(False,False),
+        12:(False,False),
+        13:(True,False),
+        14:(True,False),
+        15:(True,False),
+        16:(False,True),
+        17:(False,True),
+        18:(False,True),
+        19:(True,True),
+        20:(True,True),
+        21:(True,True)
+    }
+
 
     #case = 0
     maskFile,saveMatrixFile,saveInvCMFile = fileSets.get(case)
+    doBeamSmooth,doPixWin = BWcontrol.get(case)
 
     newMatrix = False#True
-    useMicro = False#True
-    doBeamSmooth = True#False
-    doPixWin = False
-    useRD = False#True #Overrides useCho
+    useInverse = False # set to True to use matrix inversion, False to use cInvT method
+    useMicro = False
+    #doBeamSmooth = True#False
+    #doPixWin = False
+    useRD = False#True # overrides useCho
     useCho = True # overrides default: use LU
     if newMatrix:
         startTime = time.time()
@@ -74,24 +131,25 @@ def test(case = 1,nTrials=1000):
                                  pixWin=doPixWin, lmax=250, useMicro=useMicro)
         #covMat = mcm.cMatCorrect(covMat) #correction due to estimating mean from sample
         mcm.symSave(covMat, saveMatrixFile)
-
-        if useRD:
-            print 'starting eigen decomposition...'
-            w, v = np.linalg.eigh(covMat)
-            print 'starting RD inversion...'
-            invCMat = mcm.RDInvert(w, v)
-        elif useCho:
-            print 'starting Cholesky inversion...'
-            invCMat = mcm.choInvert(covMat)
-        else:
-            print 'starting LU inversion...'
-            invCMat = np.linalg.inv(covMat)
-        print 'time elapsed: ', int((time.time() - startTime) / 60), ' minutes'
-        np.save(saveInvCMFile, invCMat)
-
+        if useInverse:
+            if useRD:
+                print 'starting eigen decomposition...'
+                w, v = np.linalg.eigh(covMat)
+                print 'starting RD inversion...'
+                invCMat = mcm.RDInvert(w, v)
+            elif useCho:
+                print 'starting Cholesky inversion...'
+                invCMat = mcm.choInvert(covMat)
+            else: # use LU
+                print 'starting LU inversion...'
+                invCMat = np.linalg.inv(covMat)
+            print 'time elapsed: ', int((time.time() - startTime) / 60), ' minutes'
+            np.save(saveInvCMFile, invCMat)
     else:
-        # covMat = mcm.symLoad(saveMatrixFile)
-        invCMat = np.load(saveInvCMFile)
+        if useInverse:
+            invCMat = np.load(saveInvCMFile)
+        else:
+            covMat = mcm.symLoad(saveMatrixFile)
 
     # load the mask - nest=True for mask!
     mask = hp.read_map(maskFile, nest=True)
@@ -115,18 +173,22 @@ def test(case = 1,nTrials=1000):
         print 'starting trial ',trial+1,' of ',nTrials
         if doBeamSmooth:
             if doPixWin:
-                map = hp.synfast(temps, NSIDE, lmax=lmax, fwhm=fwhmRad, pixwin=True)
+                map = hp.synfast(temps, NSIDE, lmax=lmax, fwhm=fwhmRad, pixwin=True)#, verbose=False)
             else:
-                map = hp.synfast(temps, NSIDE, lmax=lmax, fwhm=fwhmRad)
+                map = hp.synfast(temps, NSIDE, lmax=lmax, fwhm=fwhmRad)#, verbose=False)
         else:
             if doPixWin:
-                map = hp.synfast(temps, NSIDE, lmax=lmax, pixwin=True)
+                map = hp.synfast(temps, NSIDE, lmax=lmax, pixwin=True)#, verbose=False)
             else:
-                map = hp.synfast(temps, NSIDE, lmax=lmax)
+                map = hp.synfast(temps, NSIDE, lmax=lmax)#, verbose=False)
         Tvec = map[np.where(mask)] #apply mask
         if useMicro:
             Tvec = Tvec*1e6 #convert K to microK
-        chiSqResults[trial] = np.dot(Tvec,np.dot(invCMat,Tvec))
+        if useInverse:
+            chiSqResults[trial] = np.dot(Tvec,np.dot(invCMat,Tvec))
+            #cInvT_test(invCMat,Tvec)
+        else:
+            chiSqResults[trial] = np.dot(Tvec,cInvT(covMat,Tvec))
     csqMean = np.mean(chiSqResults)
     print 'average of chiSquared results: ',csqMean
     plt.plot(chiSqResults,linestyle="none",marker='+')

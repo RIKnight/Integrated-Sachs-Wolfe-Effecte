@@ -12,7 +12,8 @@
     Written by Z Knight, 2015.09.24
     Fixed Kelvin vs. microKelvin problem; ZK, 2015.09.29
     Added fit verification testing; ZK, 2015.10.04
-    Added option for cMatrix units in microK**2; ZK, 2015.10.11
+    Added option for cMatrix units in microK**2; ZK, 2015.12.11
+    Added useInverse flag and cInvT function; ZK, 2015.12.15
 
 """
 
@@ -45,11 +46,53 @@ def templateFit(cMatInv,ISW,CMB):
   amp = (np.dot(CMB,cInvISW) )*var
   return amp,var
 
+def templateFit2(cMatrix,ISW,CMB):
+  """
+  Purpose: same as templateFit but avoids matrix inversion by using vector inversion
+  Args:
+      cMatrix: a numpy array containing the covariance matrix (in K**2)
+      ISW: a numpy vector containing the ISW template (in K)
+      CMB: a numpy vector containing the observed CMB (in K)
+  note:
+      all Kelvin units can be replaced by microKelvin
+  Uses:
+      cInvT function
+  Returns:
+      amp,var: the amplitude and variance of the fit
+  """
+  cInvISW = cInvT(cMatrix,ISW)
+  var = (np.dot(ISW,cInvISW) )**(-1)
+  amp = (np.dot(CMB,cInvISW) )*var
+  return amp,var
+
+def cInvT(covMat,Tvec):
+    """
+    Purpose:
+        calculates C**-1*T using "left inverse" of T (a row vector)
+    Args:
+        covMat: numpy array containing a covariance matrix of field statistics
+        Tvec: numpy array containing a column vector of field values
+    Note:
+        this function is copied int chisquare_test.py
+    Returns:
+        numpy array of C**-1*T (a column vector)
+    """
+    TInv = Tvec.T/np.dot(Tvec,Tvec)    # create left inverse of Tvec
+    TInvC = np.dot(TInv,covMat)        # left multiply
+    return TInvC.T/np.dot(TInvC,TInvC) # return right inverse
+
 ################################################################################
 # testing code
 
-def test():
-  """ not really just a function for testing the other functions in this file """
+def test(useInverse = False):
+  """
+    Purpose: test the template fitting procedure
+    Input:
+      useInverse:  set this to True to invert the C matrix,
+        False to use vector inverses
+        Default: False
+    Returns: nothing
+  """
 
   doHighPass = True
   useBigMask = False
@@ -57,7 +100,7 @@ def test():
   matUnitMicro = False # option for matrices newer than 2015.12.11
   
   # file names
-  PSG = '/shared/Data/PSG/'
+  PSG = '/Data/PSG/'
   if doHighPass:
     # testing with 2 variations on ISW map and 2 variations on CMB map
     ISWFiles = np.array([PSG+'hundred_point/ISWmap_RING_r10_R010_hp11.fits',#radius to 10% max (ring)
@@ -89,40 +132,44 @@ def test():
     else:
       cMatrixFile = 'covar6110_R010_nhp.npy'
       iCMatFile = 'invCovar_R010_nhp.npy'
-
-
   # CMBFiles have unit microK, ISWFiles have unit K, and cMatrixFile has units K**2 or microK**2
+
 
   # nested vs ring parameter for loading data
   nested = False
 
-  # invert CMatrix; default: use LU
-  useRD = False#True # Overrides useCho
-  useCho = True#False
-  if newInverse:
+  if useInverse:
+    # invert CMatrix
+    useRD = False#True # Overrides useCho
+    useCho = True#False # Overrides default: use LU
+    if newInverse:
+      print 'loading C matrix from file ',cMatrixFile
+      cMatrix = mcm.symLoad(cMatrixFile)
+      # 2015.12.11: new matrices may have units microK**2 or K**2. Older matrices are all in K**2
+
+      startTime = time.time()
+      if useRD:
+        print 'calculating eigen decomposition...'
+        w,v = np.linalg.eigh(cMatrix)
+        print 'starting matrix (eigen) inversion...'
+        cMatInv = mcm.RDinvert(w,v)
+      elif useCho:
+        print 'starting matrix (Cholesky) inversion...'
+        cMatInv = mcm.choInvert(cMatrix)
+      else: # use LU
+        print 'starting matrix (LU) inversion...'
+        cMatInv = np.linalg.inv(cMatrix)
+      print 'time elapsed for inversion: ',(time.time()-startTime)/60.,' minutes'
+        #took about 2 minutes for np.linalg.inv on 6110**2 matrix
+      np.save(iCMatFile,cMatInv)
+    else:
+      print 'loading inverse C matrix from file ',iCMatFile
+      cMatInv = np.load(iCMatFile)
+  else: # do not invert and use cInvT
     print 'loading C matrix from file ',cMatrixFile
     cMatrix = mcm.symLoad(cMatrixFile)
     # 2015.12.11: new matrices may have units microK**2 or K**2. Older matrices are all in K**2
 
-    startTime = time.time()
-    if useRD:
-      print 'calculating eigen decomposition...'
-      w,v = np.linalg.eigh(cMatrix)
-      print 'starting matrix (eigen) inversion...'
-      cMatInv = mcm.RDinvert(w,v)
-    elif useCho:
-      print 'starting matrix (Cholesky) inversion...'
-      cMatInv = mcm.choInvert(cMatrix)
-    else:
-      print 'starting matrix (LU) inversion...'
-      cMatInv = np.linalg.inv(cMatrix)
-    print 'time elapsed for inversion: ',(time.time()-startTime)/60.,' minutes' 
-      #took about 2 minutes for np.linalg.inv on 6110**2 matrix
-    np.save(iCMatFile,cMatInv)
-  else:
-    print 'loading inverse C matrix from file ',iCMatFile
-    cMatInv = np.load(iCMatFile)
-  
   # load the mask - nest=True for mask!
   mask = hp.read_map(maskFile,nest=True)
   
@@ -134,19 +181,24 @@ def test():
       CMB = hp.read_map(CMBfile,nest=nested)
       CMB = CMB[np.where(mask)]
 
-      if matUnitMicro:
-        amp,var = templateFit(cMatInv,ISW*1e6,CMB) # ISW from K to microK
-      else:
-        amp,var = templateFit(cMatInv,ISW,CMB*1e-6) # CMB from microK to K
+      if useInverse:
+        if matUnitMicro:
+          amp,var = templateFit(cMatInv,ISW*1e6,CMB) # ISW from K to microK
+        else:
+          amp,var = templateFit(cMatInv,ISW,CMB*1e-6) # CMB from microK to K
+      else: # use cInvT
+        if matUnitMicro:
+          amp,var = templateFit2(cMatrix,ISW*1e6,CMB) # ISW from K to microK
+        else:
+          amp,var = templateFit2(cMatrix,ISW,CMB*1e-6) # CMB from microK to K
       print 'amplitude: ',amp,', variance: ',var
-  
 
   # testing for verification of template fitting method
   # all of the maps have been created with highpass filtering and beamsmoothing
   # each of 10 random realizations of C_l(ISWout) is added to each of 10
   # amplitudes times the ISW map... see make_sims.py
 
-  newFit = True
+  newFit = False#True
   print 'Starting verification testing... '
 
   # collect filenames
@@ -181,11 +233,18 @@ def test():
         CMB = hp.read_map(CMBfile,nest=nested)
         CMB = CMB[np.where(mask)]
 
-        if matUnitMicro:
-          amp,var = templateFit(cMatInv,ISW*1e6,CMB*1e6) #ISW and CMB from K to microK
-        else:
-          amp,var = templateFit(cMatInv,ISW,CMB)
+        if useInverse:
+          if matUnitMicro:
+            amp,var = templateFit(cMatInv,ISW*1e6,CMB*1e6) #ISW and CMB from K to microK
+          else:
+            amp,var = templateFit(cMatInv,ISW,CMB)
+        else: # use cInvT
+          if matUnitMicro:
+            amp,var = templateFit2(cMatrix,ISW*1e6,CMB*1e6) #ISW and CMB from K to microK
+          else:
+            amp,var = templateFit2(cMatrix,ISW,CMB)
         print 'amplitude: ',amp,', variance: ',var
+
         results[iIndex,cIndex,:] = [amp,var]
 
     np.save('verification_results',results)
@@ -206,12 +265,13 @@ def test():
 
   # reshape the results
   reshResults = np.reshape(results,[2,10,11,2]) #10 realizations, 11 amplitudes
-  """
+
   # plot by amplitudes
   for actInd,actual in enumerate(actualAmps):
     for iswNum in [1]: #range(nISW):
       plt.figure()
-      plt.errorbar(realizationNum,reshResults[iswNum,:,actInd,0],yerr=reshResults[iswNum,:,actInd,1],fmt='o')
+      sigma = np.sqrt(reshResults[iswNum,:,actInd,1])
+      plt.errorbar(realizationNum,reshResults[iswNum,:,actInd,0],yerr=sigma,fmt='o')
       actualAmp = np.ones(10)*actual
       plt.plot(realizationNum,actualAmp)
       plt.xlabel('10 realizations of ISWout CMB')
@@ -223,13 +283,14 @@ def test():
   for realInd,realization in enumerate(realizationNum):
     for iswNum in [1]: #range(nISW):
       plt.figure()
-      plt.errorbar(ampNum,reshResults[iswNum,realization,:,0],yerr=reshResults[iswNum,realization,:,1],fmt='o')
+      sigma = np.sqrt(reshResults[iswNum,realization,:,1])
+      plt.errorbar(ampNum,reshResults[iswNum,realization,:,0],yerr=sigma,fmt='o')
       plt.plot(ampNum,actualAmps)
       plt.xlabel('11 amplitudes of ISW template')
       plt.ylabel('amplitude derived from simulation')
       plt.title('template fitting with CMB realization #'+str(realInd))
       plt.show()
- """ 
+
   # plot mean with errors
   for iswNum in [1]: #range(nISW):
     plt.figure()
