@@ -12,6 +12,7 @@
     Switched to Cholesky Decomposition Inverse; ZK, 2015.12.11
     Added useMicro, doBeamSmooth, doPixWin parameters; ZK, 2015.12.11
     Added cInvT procedure; ZK, 2015.12.14
+    Fixed nested vs ring misconception in hp.read_map; ZK, 2016.01.06
 
 """
 
@@ -46,7 +47,7 @@ def cInvT(covMat,Tvec):
         covMat: numpy array containing a covariance matrix of field statistics
         Tvec: numpy array containing a column vector of field values
     Note:
-        this function is copied int template_fit.py
+        this function is copied in template_fit.py
     Returns:
         numpy array of C**-1*T (a column vector)
     """
@@ -94,8 +95,8 @@ def test(case = 10,nTrials=1000):
     19:(PSG+'small_masks/ISWmask_din1_R060_trunc1.fits','covar478e.npy','invCovar478e.npy'), #lmax250, with BW
     20:(PSG+'small_masks/ISWmask_din1_R060_trunc2.fits','covar525e.npy','invCovar525e.npy'), #lmax250, with BW
     21:(PSG+'small_masks/ISWmask_din1_R060_trunc3.fits','covar500e.npy','invCovar500e.npy') #lmax250, with BW
-
     }
+
     BWcontrol = {
         102:(True,True),
         10:(False,False),
@@ -118,7 +119,7 @@ def test(case = 10,nTrials=1000):
     doBeamSmooth,doPixWin = BWcontrol.get(case)
 
     newMatrix = False#True
-    useInverse = False # set to True to use matrix inversion, False to use cInvT method
+    useInverse = True #False # set to True to use matrix inversion, False to use cInvT method
     useMicro = False
     #doBeamSmooth = True#False
     #doPixWin = False
@@ -151,8 +152,12 @@ def test(case = 10,nTrials=1000):
         else:
             covMat = mcm.symLoad(saveMatrixFile)
 
-    # load the mask - nest=True for mask!
-    mask = hp.read_map(maskFile, nest=True)
+    # load the mask
+    # Here's a mystery:  The results of 1000 simulations do not appear to depend on
+    #  whether I used nest=True or nest=False in this line, but they really ought to.
+    #  Is there another line of code in this calc. that causes worse errors than
+    #  reading in the map incorrectly?
+    mask = hp.read_map(maskFile, nest=False) #use false since healpy default is RING
 
     # apply gaussbeam before synfast?
     #lmax = 250
@@ -173,14 +178,14 @@ def test(case = 10,nTrials=1000):
         print 'starting trial ',trial+1,' of ',nTrials
         if doBeamSmooth:
             if doPixWin:
-                map = hp.synfast(temps, NSIDE, lmax=lmax, fwhm=fwhmRad, pixwin=True)#, verbose=False)
+                map = hp.synfast(temps, NSIDE, lmax=lmax, fwhm=fwhmRad, pixwin=True, verbose=False)
             else:
-                map = hp.synfast(temps, NSIDE, lmax=lmax, fwhm=fwhmRad)#, verbose=False)
+                map = hp.synfast(temps, NSIDE, lmax=lmax, fwhm=fwhmRad, verbose=False)
         else:
             if doPixWin:
-                map = hp.synfast(temps, NSIDE, lmax=lmax, pixwin=True)#, verbose=False)
+                map = hp.synfast(temps, NSIDE, lmax=lmax, pixwin=True, verbose=False)
             else:
-                map = hp.synfast(temps, NSIDE, lmax=lmax)#, verbose=False)
+                map = hp.synfast(temps, NSIDE, lmax=lmax, verbose=False)
         Tvec = map[np.where(mask)] #apply mask
         if useMicro:
             Tvec = Tvec*1e6 #convert K to microK

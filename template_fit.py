@@ -14,6 +14,9 @@
     Added fit verification testing; ZK, 2015.10.04
     Added option for cMatrix units in microK**2; ZK, 2015.12.11
     Added useInverse flag and cInvT function; ZK, 2015.12.15
+    Added K-S test for sim amplitudes vs. normal dist.; ZK, 2016.01.05
+    Moved test data from test function to getTestData function; ZK, 2016.01.06
+    Fixed nested vs ring misconception in hp.read_map; ZK, 2016.01.06
 
 """
 
@@ -25,6 +28,7 @@ import healpy as hp
 #from scipy.special import legendre
 import time # for measuring duration
 from os import listdir
+from scipy import stats # for K-S test
 
 import make_Cmatrix as mcm
 
@@ -73,7 +77,7 @@ def cInvT(covMat,Tvec):
         covMat: numpy array containing a covariance matrix of field statistics
         Tvec: numpy array containing a column vector of field values
     Note:
-        this function is copied int chisquare_test.py
+        this function is copied in chisquare_test.py
     Returns:
         numpy array of C**-1*T (a column vector)
     """
@@ -81,24 +85,62 @@ def cInvT(covMat,Tvec):
     TInvC = np.dot(TInv,covMat)        # left multiply
     return TInvC.T/np.dot(TInvC,TInvC) # return right inverse
 
-################################################################################
-# testing code
-
-def test(useInverse = False):
-  """
-    Purpose: test the template fitting procedure
-    Input:
-      useInverse:  set this to True to invert the C matrix,
-        False to use vector inverses
-        Default: False
-    Returns: nothing
+def KSnorm(rvs,loc,sigma,nBins=10,showPDF=False,showCDF=False):
   """
 
-  doHighPass = True
-  useBigMask = False
-  newInverse = False
-  matUnitMicro = False # option for matrices newer than 2015.12.11
-  
+  Args:
+      rvs: random variables to compare to normal distribution
+      loc: the center of the normal distribution
+      sigma: the standard deviation of the normal distribution
+      nBins: the number of bins to use for PDF visual comparison. Does not affect KS test results
+      showPDF: set this to show a PDF of the KS comparison
+      showCDF: set this to show a CDF of the KS comparison
+  Uses:
+      scipy.stats.kstest, scipy.stats.norm
+  Returns:
+      the result of the KS test
+
+  """
+  KSresult = stats.kstest(rvs,'norm',args=(loc,sigma))
+  if showPDF:
+    h=plt.hist(rvs,bins=nBins,normed=True)
+    x=np.linspace(stats.norm.ppf(0.01,loc=loc,scale=sigma),stats.norm.ppf(0.99,loc=loc,scale=sigma),100)
+    plt.plot(x,stats.norm.pdf(x,loc=loc,scale=sigma))
+    plt.title('K-S PDF at amplitude '+str(loc)+'; K-S statistic = '+str(KSresult[0]))
+    plt.show()
+  if showCDF:
+    h=plt.hist(rvs,bins=rvs.__len__()*10,normed=True,cumulative=True,histtype='step')
+    x=np.linspace(stats.norm.ppf(0.01,loc=loc,scale=sigma),stats.norm.ppf(0.99,loc=loc,scale=sigma),100)
+    plt.plot(x,stats.norm.cdf(x,loc=loc,scale=sigma))
+    plt.title('K-S CDF at amplitude '+str(loc)+'; K-S statistic = '+str(KSresult[0]))
+    plt.show()
+
+  return KSresult
+
+def getTestData(doHighPass=True,useBigMask=False,newInverse=False,matUnitMicro=False,useInverse=False):
+  """
+  Purpose:
+      get the (covariance matrix or inverse covariance matrix), mask, ISW vectors, and model variances
+      The program also does some template fitting for two test CMB files and two test ISW files.
+        (This last functionality doesn't really belong here and should be moved back to test function)
+  Args:
+      doHighPass: set this to use files that have been high pass filtered
+      useBigMask: set this to use the 9000 pixel mask. Otherwise, the 6000 pixel mask is used
+      newInverse: set this to create a new inverse if useInverse is also flagged
+      matUnitMicro: set this if cMatrix or cMatInv has units of microKelvin**2.  Otherwise, K**2 is assumed.
+      useInverse: set this to invert cMatrix.  Otherwise, left and right inverses are used via cInvT function.
+        If used, inverse covariance matrix is returned.  Otherwise, covariance matrix is returned.
+
+  Returns:
+      matrix,mask,ISWvecs,modelVariances,ISWFiles,CMBFiles
+        matrix: a numpy array containing the covariance matrix or the inverse covariance matrix,
+          depending on the value of useInverse
+        mask: a numpy vector containing the mask
+        ISWvecs: a numpy array containing a vector for each ISW file specified in the code below.
+        modelVariances: the template fitting variance for each ISW file specified below.
+        ISWFiles: list of ISW files
+        CMBFiles: list of CMB files
+  """
   # file names
   PSG = '/Data/PSG/'
   if doHighPass:
@@ -126,7 +168,7 @@ def test(useInverse = False):
   else:
     maskFile = PSG+'ten_point/ISWmask_din1_R010.fits' #(nested)
     if doHighPass:
-      cMatrixFile = 'covar6110_R010.npy' 
+      cMatrixFile = 'covar6110_R010.npy'
       #iCMatFile = 'invCovar_R010.npy'
       iCMatFile = 'invCovar_R010_RD.npy'
     else:
@@ -135,7 +177,8 @@ def test(useInverse = False):
   # CMBFiles have unit microK, ISWFiles have unit K, and cMatrixFile has units K**2 or microK**2
 
 
-  # nested vs ring parameter for loading data
+  # nested vs ring parameter for converting data to arrays during loading, if necessary
+  # if True, will convert to nested, if False, will convert to ring
   nested = False
 
   if useInverse:
@@ -170,13 +213,17 @@ def test(useInverse = False):
     cMatrix = mcm.symLoad(cMatrixFile)
     # 2015.12.11: new matrices may have units microK**2 or K**2. Older matrices are all in K**2
 
-  # load the mask - nest=True for mask!
-  mask = hp.read_map(maskFile,nest=True)
-  
-  for ISWfile in ISWFiles:
+  # load the mask
+  mask = hp.read_map(maskFile,nest=nested)
+
+  modelVariances = np.empty(ISWFiles.size) # to store the variance expected in model
+  maskSize = np.sum(mask)
+  ISWvecs = np.zeros((ISWFiles.size,maskSize))
+  CMBvecs = np.zeros((CMBFiles.size,maskSize))
+  for iIndex,ISWfile in enumerate(ISWFiles):
     ISW = hp.read_map(ISWfile,nest=nested)
     ISW = ISW[np.where(mask)]
-    for CMBfile in CMBFiles:
+    for cIndex,CMBfile in enumerate(CMBFiles):
       print 'starting with ',ISWfile,' and ',CMBfile
       CMB = hp.read_map(CMBfile,nest=nested)
       CMB = CMB[np.where(mask)]
@@ -192,13 +239,52 @@ def test(useInverse = False):
         else:
           amp,var = templateFit2(cMatrix,ISW,CMB*1e-6) # CMB from microK to K
       print 'amplitude: ',amp,', variance: ',var
+      CMBvecs[cIndex] = CMB
+    ISWvecs[iIndex] = ISW
+    modelVariances[iIndex] = var # independant of CMB map
+
+  if useInverse:
+    return cMatInv,mask,ISWvecs,modelVariances,ISWFiles,CMBFiles
+  else:
+    return cMatrix,mask,ISWvecs,modelVariances,ISWFiles,CMBFiles
+
+
+
+################################################################################
+# testing code
+
+def test(useInverse = False):
+  """
+    Purpose: test the template fitting procedure
+    Input:
+      useInverse:  set this to True to invert the C matrix,
+        False to use vector inverses
+        Default: False
+    Returns: nothing
+  """
+
+  doHighPass   = True  # having this false lets more cosmic variance in
+  useBigMask   = False
+  newInverse   = False
+  matUnitMicro = False # option for matrices newer than 2015.12.11
+
+  # this line gets the test data and does 4 template fits for files specified within
+  print 'Starting template fitting on observed data... '
+  M,mask,ISWvecs,modelVariances,ISWFiles,CMBFiles = getTestData(doHighPass=doHighPass,useBigMask=useBigMask,
+                                                                newInverse=newInverse,matUnitMicro=matUnitMicro,
+                                                                useInverse=useInverse)
+  if useInverse:
+    cMatInv = M
+  else:
+    cMatrix = M
+  del M
 
   # testing for verification of template fitting method
   # all of the maps have been created with highpass filtering and beamsmoothing
   # each of 10 random realizations of C_l(ISWout) is added to each of 10
   # amplitudes times the ISW map... see make_sims.py
 
-  newFit = False#True
+  newFit = True
   print 'Starting verification testing... '
 
   # collect filenames
@@ -207,17 +293,17 @@ def test(useInverse = False):
   else:
     simDirectory = '/shared/Data/sims/'
   simFiles = listdir(simDirectory)
-  CMBFiles = [simDirectory+file for file in simFiles if 'b120_N64' in file]
+  CMBFiles = [simDirectory+file for file in simFiles if '.fits' in file] #'b120_N64' in file]
   CMBFiles = np.sort(CMBFiles)
 
   # just do one file for now
   #CMBFiles = [file for file in CMBFiles if '01a' in file]
   
   # nested vs ring parameter for loading data
-  #nested = False
+  nested = False
 
   # load the mask
-  #mask = hp.read_map(maskFile,nest=True) #nested)  #mask must have nest=True
+  #mask = hp.read_map(maskFile,nest=nested) #mask file has nested ordering
 
 
   if newFit:
@@ -266,6 +352,7 @@ def test(useInverse = False):
   # reshape the results
   reshResults = np.reshape(results,[2,10,11,2]) #10 realizations, 11 amplitudes
 
+  """
   # plot by amplitudes
   for actInd,actual in enumerate(actualAmps):
     for iswNum in [1]: #range(nISW):
@@ -306,7 +393,15 @@ def test(useInverse = False):
     else:
       plt.title('template fitting compared to actual amplitudes; no highpass')
     plt.show()
-  
+
+  """
+  # do K-S test of simulated amplitudes against expected normal distribution
+  for actInd,actual in enumerate(actualAmps):
+    for iswNum in [1]:
+      myAmp = reshResults[iswNum,:,actInd,0]
+      sigma = np.sqrt(modelVariances[iswNum])
+      KSresult = KSnorm(myAmp,actual,sigma,nBins=5,showCDF=True)
+      print 'K-S test result for simulated amplitude '+str(actual)+': ',KSresult
 
 if __name__=='__main__':
   test()
