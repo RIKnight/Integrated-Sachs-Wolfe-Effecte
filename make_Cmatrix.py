@@ -22,6 +22,7 @@
     Added lmax and useMicro parameters to makeCmatrix;
       Fixed indexing problem where makeCmatrix was missing
         diagonal below main; ZK, 2015.12.11
+    Added nested parameter; ZK, 2016.01.09
 
 """
 
@@ -117,12 +118,13 @@ def powerArray(x,powMax):
   return pows
 
 
-def makeCmatrix(maskFile, powerFile, highpass = 0, beamSmooth = True, pixWin = True, lmax=2000, useMicro=False):
+def makeCmatrix(maskFile, powerFile, highpass = 0, beamSmooth = True, pixWin = True,
+                lmax=2000, useMicro=False, nested=False):
   """
     function to make the covariance matrix
     maskFile: a healpix fits file name that contains 1 where a pixel is to be included
       in covariance matrix and 0 otherwise
-      Must be Nested and NSIDE=64
+      Must be NSIDE=64
     powerFile: a CAMB CMB power spectrum file with units K**2
     highpass: the lowest multipole l to not be zeroed out.
       Default is 0
@@ -137,16 +139,21 @@ def makeCmatrix(maskFile, powerFile, highpass = 0, beamSmooth = True, pixWin = T
       Default is 2000
     useMicro: converts power spectrum units from K**2 to microK**2 before calculating matrix
     returns the covariance matrix, with units K**2 or microK**2, depending on value of useMicro parameter
+    nested: NESTED vs RING parameter to be used with healpy functions
+      IMPORTANT!!! Note that nested parameter used to create C matrix must match that used
+        in every function that uses the C matrix
+      Default is False
   """
   # read mask file
-  mask = hp.read_map(maskFile,nest=True)
+  mask = hp.read_map(maskFile,nest=nested)
 
   # read power spectrum file
   ell,C_l = getCl(powerFile)
 
   # read coordinates file
-  coordsFile64 = '/shared/Data/pixel_coords_map_nested_galactic_res6.fits'
-  gl,gb = hp.read_map(coordsFile64,(0,1),nest=True)
+  #coordsFile64 = '/shared/Data/pixel_coords_map_nested_galactic_res6.fits'
+  coordsFile64 = '/shared/Data/pixel_coords_map_ring_galactic_res6.fits'
+  gl,gb = hp.read_map(coordsFile64,(0,1),nest=nested)
 
   # isolate pixels indicated by mask
   #myGl = np.array([gl[index] for index in range(gl.size) if mask[index] == 1])
@@ -215,7 +222,7 @@ def cMatCorrect(cMatrix):
     """
     Purpose:
         corrects C matrix for effects of estimating the mean of the sample from the sample iteslf
-        Follows Granett, Nerynck, and Szapudi 2009, section 4.1
+        Follows Granett, Neriynck, and Szapudi 2009, section 4.1
     Args:
         cMatrix:  a numpy array containing the covariance matrix to correct
 
@@ -233,7 +240,7 @@ def cMatCorrect(cMatrix):
     return cMatrixCorrected
 
 
-def subMatrix(maskFile,bigMaskFile,cMatrixFile):
+def subMatrix(maskFile,bigMaskFile,cMatrixFile,nested=False):
   """
     function to extract a C matrix from a matrix made for a larger set of pixels.
     
@@ -244,12 +251,13 @@ def subMatrix(maskFile,bigMaskFile,cMatrixFile):
       bigMaskFile: FITS file containing a mask that corresponds to the pixels
         used to create the cMatrix stored in cMatrixFile
       cMatrixFile: numpy file containing a symSave C matrix
+      nested: NESTED vs RING parameter to be used with healpy functions
     OUTPUTS:
       returns a C matrix
   """
   # read mask files
-  mask = hp.read_map(maskFile,nest=True)
-  bigMask = hp.read_map(bigMaskFile,nest=True)
+  mask = hp.read_map(maskFile,nest=nested)
+  bigMask = hp.read_map(bigMaskFile,nest=nested)
   # read C matrix file
   print 'loading C matrix from file...'
   cMatrix = symLoad(cMatrixFile)
@@ -321,19 +329,23 @@ def test():
   # test powerArray
   powers = powerArray(2,9)
   print powers
+  """
 
   # test makeCmatrix
   # measured time: 4.25 hrs for 6110 point mask
   startTime = time.time()
-  #maskFile = '/shared/Data/PSG/ten_point/ISWmask_din1_R010.fits'
+  maskFile = '/shared/Data/PSG/ten_point/ISWmask_din1_R010.fits'
   #saveMatrixFile = 'covar6110_R010_lowl.npy'
   #saveMatrixFile = 'covar6110_R010.npy'
-  maskFile = '/shared/Data/PSG/hundred_point/ISWmask2_din1_R160.fits'
-  saveMatrixFile = 'covar9875_R160b.npy'
+  saveMatrixFile = 'covar6110_R010_RING_nBW_hp12.npy'
+  #maskFile = '/shared/Data/PSG/hundred_point/ISWmask2_din1_R160.fits'
+  #saveMatrixFile = 'covar9875_R160b.npy'
   
-  covMat = makeCmatrix(maskFile, ISWoutFile)
+  #covMat = makeCmatrix(maskFile, ISWoutFile)
+  covMat = makeCmatrix(maskFile, ISWoutFile, highpass=12, beamSmooth=False, pixWin=False, lmax=2200)
   print 'time elapsed: ',int((time.time()-startTime)/60),' minutes'
   symSave(covMat,saveMatrixFile)
+  """
 
   # test subMatrix
   subMask = '/shared/Data/PSG/small_masks/ISWmask_din1_R010_trunc0500.fits'

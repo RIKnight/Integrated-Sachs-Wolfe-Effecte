@@ -11,6 +11,7 @@
 
   MODIFICATION HISTORY:
     Written by Z Knight, 2016.01.06
+    Added nested parameter; ZK, 2016.01.09
 
 """
 
@@ -26,12 +27,14 @@ import template_fit as tf
 ################################################################################
 # testing code
 
-def test(nSkies=10,useInverse=False):
+def test(nSkies=10,useInverse=True,nested=False):
     """
     Purpose: do the KS testing
     Input:
         nSkies: the number of simulated CMBs to generate for K-S test
         useInverse: set this to invert C matrix.  Otherwise, cInvT method is used
+            Default: True.  The cInvT method is garbage; don't use it.
+        nested: NESTED vs RING parameter for healpy functions
     Returns: nothing
     """
 
@@ -44,7 +47,7 @@ def test(nSkies=10,useInverse=False):
     print 'Starting template fitting on observed data... '
     M,mask,ISWvecs,modelVariances,ISWFiles,CMBFiles = tf.getTestData(doHighPass=doHighPass,useBigMask=useBigMask,
                                                                      newInverse=newInverse,matUnitMicro=matUnitMicro,
-                                                                     useInverse=useInverse)
+                                                                     useInverse=useInverse,nested=nested)
     if useInverse:
         cMatInv = M
     else:
@@ -61,7 +64,7 @@ def test(nSkies=10,useInverse=False):
 
     # get ISW map
     doISWnum = 1 # ISW file 0 has radius to 10%, file 1 has radius to 2%
-    ISWmap = hp.read_map(ISWFiles[doISWnum],nest=False)
+    ISWmap = hp.read_map(ISWFiles[doISWnum],nest=nested)
     ISWvec = ISWmap[np.where(mask)]
 
     fineNSIDE = 1024 # will downgrade to 64 after creating at high resolution
@@ -88,20 +91,27 @@ def test(nSkies=10,useInverse=False):
     for skyNum in range(nSkies):
         print 'starting sim ',skyNum+1,' of ',nSkies,'... '
         # generate CMB sky and add ISW map
-        # CMB map parameters should match those used in C matrix
-        #print temps.shape,lmax
 
-        # create simulated map at NSIDE=1024, and match what I did in IDL
+        # CMB map parameters should match those used in C matrix
         CMBmap = hp.synfast(temps,NSIDE,lmax=lmax,pixwin=True,verbose=False)
         #CMBmap = hp.synfast(temps,fineNSIDE,lmax=2*NSIDE,fwhm=fwhmRad,verbose=False)
+        if nested:
+            CMBmap = hp.reorder(CMBmap,r2n=True)
         # rebin to NSIDE=64
-        #CMBmap = hp.ud_grade(CMBmap,NSIDE,order_in='RING',order_out='RING')
+        #if nested:
+        #    CMBmap = hp.ud_grade(CMBmap,NSIDE,order_in='NESTED',order_out='NESTED')
+        #else:
+        #    CMBmap = hp.ud_grade(CMBmap,NSIDE,order_in='RING',order_out='RING')
+
         CMBvec = CMBmap[np.where(mask)]
         #print 'CMBvec: ',CMBvec
         for ampNum in range(nAmps):
             myISWvec = ISWvec*actualAmps[ampNum]
             CMBsum = CMBvec + myISWvec
-            amp,var = tf.templateFit2(cMatrix,ISWvec,CMBsum) #tf2 uses cInvT method, not matrix inverse
+            if useInverse:
+                amp,var = tf.templateFit(cMatInv,ISWvec,CMBsum)
+            else: # NOOOO!!! it will eat you alive!
+                amp,var = tf.templateFit2(cMatrix,ISWvec,CMBsum)
             fitAmps[skyNum,ampNum] = amp
             fitVars[ampNum] = var
 

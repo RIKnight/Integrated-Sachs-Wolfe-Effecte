@@ -15,6 +15,7 @@
     Added plotting, ZK, 2015.09.21
     Added more tests and plots, ZK, 2015.09.29
     Switched to make_Cmatrix.symSave file format; ZK, 2015.09.29
+    Added nested parameter; ZK, 2016.01.09
 
 """
 
@@ -59,7 +60,7 @@ def checkEigs(maskFile,ISWoutFile,covMatFile,Load=False,subMatrix=False):
 
   return w,v,invCmat
 
-def plotEigs(maskFile,maskName,eigvals,eigvecs):
+def plotEigs(maskFile,maskName,eigvals,eigvecs,nested=False):
   """
     function to compare eigenvectors dotted with data vectors (called RT)
       against sqrt(eigenvalues) 
@@ -68,13 +69,14 @@ def plotEigs(maskFile,maskName,eigvals,eigvecs):
       maskName: name of the mask for plot title
       eigvals: eigenvalues of C matrix
       eigvecs: eigenvectors of C matrix
+      nested: the NESTED vs RING parameter to pass to healpy functions
     OUTPUTS:
       plots to pyplot window
   """
   # load maps
   mapFile  = '/shared/Data/PSG/ten_point/ISWmap_din1_R060.fits'
-  ISWmap   = hp.read_map(mapFile,nest=True)
-  ISWmask = hp.read_map(maskFile,nest=True)
+  ISWmap   = hp.read_map(mapFile,nest=nested)
+  ISWmask = hp.read_map(maskFile,nest=nested)
   mapVec  = ISWmap[np.where(ISWmask)]
   RT = np.dot(eigvecs,mapVec)
 

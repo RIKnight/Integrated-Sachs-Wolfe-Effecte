@@ -13,6 +13,7 @@
     Added useMicro, doBeamSmooth, doPixWin parameters; ZK, 2015.12.11
     Added cInvT procedure; ZK, 2015.12.14
     Fixed nested vs ring misconception in hp.read_map; ZK, 2016.01.06
+    Added nested parameter to test function; ZK, 2016.01.09
 
 """
 
@@ -41,6 +42,7 @@ def cInvT_test(cInv,T):
 
 def cInvT(covMat,Tvec):
     """
+    IMPORTANT!!! this function is BS.  Don't use it.
     Purpose:
         calculates C**-1*T using "left inverse" of T (a row vector)
     Args:
@@ -55,11 +57,18 @@ def cInvT(covMat,Tvec):
     TInvC = np.dot(TInv,covMat)        # left multiply
     return TInvC.T/np.dot(TInvC,TInvC) # return right inverse
 
-def test(case = 10,nTrials=1000):
+def test(case = 10,nTrials=1000,useInverse=True,nested=False):
     """
         function for testing the expectation value <T*C**-1*T> = N_pix
-        case: selects which set of files to use for test
-        nTrials: the number of random skies to use
+        Inputs:
+            case: selects which set of files to use for test
+                Default: 10
+            nTrials: the number of random skies to use
+                Default: 1000
+            useInverse: set this to True to do matrix inversion, False to use left/right inverses method
+                Default: True
+            nested: NESTED vs RING parameter for healpy functions
+                Default: False
     """
 
     # get Cl
@@ -119,7 +128,6 @@ def test(case = 10,nTrials=1000):
     doBeamSmooth,doPixWin = BWcontrol.get(case)
 
     newMatrix = False#True
-    useInverse = True #False # set to True to use matrix inversion, False to use cInvT method
     useMicro = False
     #doBeamSmooth = True#False
     #doPixWin = False
@@ -153,11 +161,7 @@ def test(case = 10,nTrials=1000):
             covMat = mcm.symLoad(saveMatrixFile)
 
     # load the mask
-    # Here's a mystery:  The results of 1000 simulations do not appear to depend on
-    #  whether I used nest=True or nest=False in this line, but they really ought to.
-    #  Is there another line of code in this calc. that causes worse errors than
-    #  reading in the map incorrectly?
-    mask = hp.read_map(maskFile, nest=False) #use false since healpy default is RING
+    mask = hp.read_map(maskFile, nest=nested)
 
     # apply gaussbeam before synfast?
     #lmax = 250
@@ -186,6 +190,8 @@ def test(case = 10,nTrials=1000):
                 map = hp.synfast(temps, NSIDE, lmax=lmax, pixwin=True, verbose=False)
             else:
                 map = hp.synfast(temps, NSIDE, lmax=lmax, verbose=False)
+        if nested:
+            map = hp.reorder(map,r2n=True)
         Tvec = map[np.where(mask)] #apply mask
         if useMicro:
             Tvec = Tvec*1e6 #convert K to microK

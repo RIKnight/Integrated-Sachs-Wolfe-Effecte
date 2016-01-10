@@ -17,15 +17,13 @@
     Added K-S test for sim amplitudes vs. normal dist.; ZK, 2016.01.05
     Moved test data from test function to getTestData function; ZK, 2016.01.06
     Fixed nested vs ring misconception in hp.read_map; ZK, 2016.01.06
+    Added nested as a passable parameter to 2 functions; ZK, 2016.01.09
 
 """
 
 import numpy as np
 import matplotlib.pyplot as plt
 import healpy as hp
-#import pyfits as pf
-#from numpy.polynomial.legendre import legval
-#from scipy.special import legendre
 import time # for measuring duration
 from os import listdir
 from scipy import stats # for K-S test
@@ -52,6 +50,7 @@ def templateFit(cMatInv,ISW,CMB):
 
 def templateFit2(cMatrix,ISW,CMB):
   """
+  IMPORTANT!!! this function is BS.  Don't use it.
   Purpose: same as templateFit but avoids matrix inversion by using vector inversion
   Args:
       cMatrix: a numpy array containing the covariance matrix (in K**2)
@@ -71,6 +70,7 @@ def templateFit2(cMatrix,ISW,CMB):
 
 def cInvT(covMat,Tvec):
     """
+    IMPORTANT!!! this function is BS.  Don't use it.
     Purpose:
         calculates C**-1*T using "left inverse" of T (a row vector)
     Args:
@@ -117,7 +117,8 @@ def KSnorm(rvs,loc,sigma,nBins=10,showPDF=False,showCDF=False):
 
   return KSresult
 
-def getTestData(doHighPass=True,useBigMask=False,newInverse=False,matUnitMicro=False,useInverse=False):
+def getTestData(doHighPass=True, useBigMask=False, newInverse=False, matUnitMicro=False,
+                useInverse=True, nested=False):
   """
   Purpose:
       get the (covariance matrix or inverse covariance matrix), mask, ISW vectors, and model variances
@@ -130,6 +131,8 @@ def getTestData(doHighPass=True,useBigMask=False,newInverse=False,matUnitMicro=F
       matUnitMicro: set this if cMatrix or cMatInv has units of microKelvin**2.  Otherwise, K**2 is assumed.
       useInverse: set this to invert cMatrix.  Otherwise, left and right inverses are used via cInvT function.
         If used, inverse covariance matrix is returned.  Otherwise, covariance matrix is returned.
+        Default: True.  please don't change to False.  The cInvT method is garbage.
+      nested: the NESTED vs RING parameter to pass to healpy functions
 
   Returns:
       matrix,mask,ISWvecs,modelVariances,ISWFiles,CMBFiles
@@ -179,7 +182,7 @@ def getTestData(doHighPass=True,useBigMask=False,newInverse=False,matUnitMicro=F
 
   # nested vs ring parameter for converting data to arrays during loading, if necessary
   # if True, will convert to nested, if False, will convert to ring
-  nested = False
+  #nested = False
 
   if useInverse:
     # invert CMatrix
@@ -233,7 +236,7 @@ def getTestData(doHighPass=True,useBigMask=False,newInverse=False,matUnitMicro=F
           amp,var = templateFit(cMatInv,ISW*1e6,CMB) # ISW from K to microK
         else:
           amp,var = templateFit(cMatInv,ISW,CMB*1e-6) # CMB from microK to K
-      else: # use cInvT
+      else: # use cInvT  ... c'mon really? cInvT will swallow your soul.
         if matUnitMicro:
           amp,var = templateFit2(cMatrix,ISW*1e6,CMB) # ISW from K to microK
         else:
@@ -253,13 +256,14 @@ def getTestData(doHighPass=True,useBigMask=False,newInverse=False,matUnitMicro=F
 ################################################################################
 # testing code
 
-def test(useInverse = False):
+def test(useInverse=True, nested=False):
   """
     Purpose: test the template fitting procedure
     Input:
       useInverse:  set this to True to invert the C matrix,
-        False to use vector inverses
-        Default: False
+        False to use vector inverses via cInvT
+        Default: True. please don't change to False.  The cInvT method is garbage.
+      nested: the NESTED vs RING parameter to pass to healpy functions
     Returns: nothing
   """
 
@@ -272,12 +276,15 @@ def test(useInverse = False):
   print 'Starting template fitting on observed data... '
   M,mask,ISWvecs,modelVariances,ISWFiles,CMBFiles = getTestData(doHighPass=doHighPass,useBigMask=useBigMask,
                                                                 newInverse=newInverse,matUnitMicro=matUnitMicro,
-                                                                useInverse=useInverse)
+                                                                useInverse=useInverse,nested=nested)
   if useInverse:
     cMatInv = M
   else:
     cMatrix = M
   del M
+
+  # the rest of this file has been outdated.  Use KS-showdown instead
+  """
 
   # testing for verification of template fitting method
   # all of the maps have been created with highpass filtering and beamsmoothing
@@ -300,7 +307,7 @@ def test(useInverse = False):
   #CMBFiles = [file for file in CMBFiles if '01a' in file]
   
   # nested vs ring parameter for loading data
-  nested = False
+  #nested = False
 
   # load the mask
   #mask = hp.read_map(maskFile,nest=nested) #mask file has nested ordering
@@ -324,7 +331,7 @@ def test(useInverse = False):
             amp,var = templateFit(cMatInv,ISW*1e6,CMB*1e6) #ISW and CMB from K to microK
           else:
             amp,var = templateFit(cMatInv,ISW,CMB)
-        else: # use cInvT
+        else: # use cInvT... beware!  cInvT will destroy your career and melt your brain
           if matUnitMicro:
             amp,var = templateFit2(cMatrix,ISW*1e6,CMB*1e6) #ISW and CMB from K to microK
           else:
@@ -352,7 +359,7 @@ def test(useInverse = False):
   # reshape the results
   reshResults = np.reshape(results,[2,10,11,2]) #10 realizations, 11 amplitudes
 
-  """
+
   # plot by amplitudes
   for actInd,actual in enumerate(actualAmps):
     for iswNum in [1]: #range(nISW):
@@ -394,14 +401,17 @@ def test(useInverse = False):
       plt.title('template fitting compared to actual amplitudes; no highpass')
     plt.show()
 
-  """
+
   # do K-S test of simulated amplitudes against expected normal distribution
   for actInd,actual in enumerate(actualAmps):
     for iswNum in [1]:
       myAmp = reshResults[iswNum,:,actInd,0]
+      # this is the wrong variance fix this.  Or just use KS_showdown instead.
       sigma = np.sqrt(modelVariances[iswNum])
       KSresult = KSnorm(myAmp,actual,sigma,nBins=5,showCDF=True)
       print 'K-S test result for simulated amplitude '+str(actual)+': ',KSresult
+
+  """
 
 if __name__=='__main__':
   test()

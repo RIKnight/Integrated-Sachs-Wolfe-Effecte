@@ -9,6 +9,7 @@
   MODIFICATION HISTORY:
     Written by Z Knight, 2015.10.02
     Removed saving of 100 huge FITS files; Added map smoothing; ZK 2015.10.19
+    Added support for nested ordering; ZK, 2016.01.09
 """
 
 import numpy as np
@@ -34,18 +35,21 @@ iswFile='/shared/Data/PSG/hundred_point/ISWmap_RING_R010.fits' #NSIDE=64, DeltaT
 nAmps = 10
 amplitudes = np.logspace(-1,2,nAmps)
 ampTags = ['a','b','c','d','e','f','g','h','i','j']
-nest = False
+nested = False
 
 print 'reading map ',iswFile
 isw = hp.read_map(iswFile,nest=nest)
 for cmbFile in cmbFiles:
   print 'reading map ',cmbFile
-  cmb = hp.read_map(mapDirectory+cmbFile,nest=nest)
+  cmb = hp.read_map(mapDirectory+cmbFile,nest=nested)
   # rebin to NSIDE=64
-  cmb = hp.ud_grade(cmb,64,order_in='RING',order_out='RING')
+  if nested:
+    cmb = hp.ud_grade(cmb,64,order_in='NESTED',order_out='NESTED')
+  else:
+    cmb = hp.ud_grade(cmb,64,order_in='RING',order_out='RING')
   for ampNum in range(nAmps):
     myCMB = cmb+isw*amplitudes[ampNum]
-    hp.write_map(mapDirectory+cmbFile[:-5]+ampTags[ampNum]+'.fits', myCMB, nest=nest, coord='G')
+    hp.write_map(mapDirectory+cmbFile[:-5]+ampTags[ampNum]+'.fits', myCMB, nest=nested, coord='G')
 
 print 'done'
 
