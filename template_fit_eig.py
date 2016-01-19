@@ -19,7 +19,6 @@ import matplotlib.pyplot as plt
 import healpy as hp
 #import astropy.io.fits as pf
 import time # for measuring duration
-from os import listdir
 
 import make_Cmatrix as mcm
 import template_fit as tf
@@ -28,7 +27,7 @@ import template_fit as tf
 ################################################################################
 # testing code
 
-def test(nested=False):
+def test(nested=True):
     """
         Purpose: test the template fitting procedure
         Input:
@@ -37,22 +36,10 @@ def test(nested=False):
         Returns: nothing
     """
 
-    doHighPass   = True  # having this false lets more cosmic variance in
-    useBigMask   = False
-    newInverse   = False
-    matUnitMicro = False # option for matrices newer than 2015.12.11
-    useInverse   = True # please don't change to False.  The cInvT method is garbage.
-
+    doHighPass = True
     # this line gets the test data and does 4 template fits for files specified within
     print 'Starting template fitting on observed data... '
-    M,mask,ISWvecs,modelVariances,ISWFiles,CMBFiles = tf.getTestData(doHighPass=doHighPass,useBigMask=useBigMask,
-                                                                newInverse=newInverse,matUnitMicro=matUnitMicro,
-                                                                useInverse=useInverse,nested=nested)
-    if useInverse:
-        cMatInv = M
-    else:
-        cMatrix = M
-    del M
+    cMatInv,mask,ISWvecs,modelVariances,ISWFiles,CMBFiles = tf.getTestData(doHighPass=doHighPass,nested=nested)
 
     # get eigs of c matrix
     newEig = False#True
@@ -102,6 +89,7 @@ def test(nested=False):
         CMBvecSqSum += CMBvecRot**2
     CMBvecSqAvg = CMBvecSqSum/nSkies
 
+    """
     # plot eigenvalues unordered
     plt.plot(w)
     plt.xlabel('eigenvalue number')
@@ -119,7 +107,22 @@ def test(nested=False):
     plt.xlabel('eigenvalue number')
     plt.ylabel('<Tsquig^2> - lambda')
     plt.show()
+    """
 
+    # log plot of both together
+    plt.semilogy(CMBvecSqAvg)
+    plt.semilogy(w)
+    plt.xlabel('eigenvalue number')
+    plt.ylabel('eigenvalue')
+    plt.title('<Tsquig^2> (blue) and lambda (green)')
+    plt.show()
+
+    # plot of ratio
+    plt.plot(CMBvecSqAvg/w)
+    plt.xlabel('eigenvalue number')
+    plt.ylabel('<Tsquig^2> / lambda')
+    plt.title('ratio of eigenvalues: ensemble <Tsquig^2> to lambda ')
+    plt.show()
 
 
 if __name__=='__main__':

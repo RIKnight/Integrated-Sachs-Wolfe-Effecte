@@ -23,6 +23,9 @@
       Fixed indexing problem where makeCmatrix was missing
         diagonal below main; ZK, 2015.12.11
     Added nested parameter; ZK, 2016.01.09
+    Added error checking for subMatrix; ZK, 2016.01.14
+    Removed forSMICA functionality from makeCmatrix, as it belongs
+      in filter_map and was erroneously copied here; ZK, 2016.01.18
 
 """
 
@@ -151,8 +154,10 @@ def makeCmatrix(maskFile, powerFile, highpass = 0, beamSmooth = True, pixWin = T
   ell,C_l = getCl(powerFile)
 
   # read coordinates file
-  #coordsFile64 = '/shared/Data/pixel_coords_map_nested_galactic_res6.fits'
-  coordsFile64 = '/shared/Data/pixel_coords_map_ring_galactic_res6.fits'
+  if nested:
+    coordsFile64 = '/shared/Data/pixel_coords_map_nested_galactic_res6.fits'
+  else:
+    coordsFile64 = '/shared/Data/pixel_coords_map_ring_galactic_res6.fits'
   gl,gb = hp.read_map(coordsFile64,(0,1),nest=nested)
 
   # isolate pixels indicated by mask
@@ -180,7 +185,6 @@ def makeCmatrix(maskFile, powerFile, highpass = 0, beamSmooth = True, pixWin = T
   print cosThetaArray
   
   # create beam and pixel window expansions and other factor
-  #lmax = 2000
   if pixWin:
     lmax = 250
     Wpix = hp.pixwin(64)
@@ -189,13 +193,7 @@ def makeCmatrix(maskFile, powerFile, highpass = 0, beamSmooth = True, pixWin = T
     W_l = 1.0
   if beamSmooth:
     lmax = 250
-    forSMICA = False # if using C matrix with SMICA map, set to True.  if using with sims, set to False
-    mbeam = hp.gauss_beam(120./60*np.pi/180,lmax=lmax) # 120 arcmin to be below W_l
-    if forSMICA:
-        pbeam = hp.gauss_beam(5./60*np.pi/180,lmax=lmax)   # 5 arcmin beam; SMICA already has
-        B_l = mbeam/pbeam
-    else:
-        B_l = mbeam
+    B_l = hp.gauss_beam(120./60*np.pi/180,lmax=lmax) # 120 arcmin to be below W_l
   else:
     B_l = 1.0
   print "lmax cutoff imposed at l=",lmax
@@ -265,6 +263,11 @@ def subMatrix(maskFile,bigMaskFile,cMatrixFile,nested=False):
   maskVec = np.where(mask)[0] #array of indices
   bigMaskVec = np.where(bigMask)[0] #array of indices
   print 'looping through indices to create sub-matrix...'
+  # check for mask pixels outside bigmask:
+  for pixel in maskVec:
+    if pixel not in bigMaskVec:
+      print 'error: small mask contains pixel outside of big mask.'
+      return 0
   subVec = [bigI for bigI in range(bigMaskVec.size) for subI in range(maskVec.size) if maskVec[subI] == bigMaskVec[bigI] ]
   print 'done'
 
@@ -313,6 +316,7 @@ def test():
   """
   # test getCl
   ISWoutFile = 'ISWout_scalCls.fits'
+  ISWinFile = 'ISWin_scalCls.fits'
   ell,temps = getCl(ISWoutFile)
 
   """
@@ -334,15 +338,25 @@ def test():
   # test makeCmatrix
   # measured time: 4.25 hrs for 6110 point mask
   startTime = time.time()
-  maskFile = '/shared/Data/PSG/ten_point/ISWmask_din1_R010.fits'
   #saveMatrixFile = 'covar6110_R010_lowl.npy'
   #saveMatrixFile = 'covar6110_R010.npy'
-  saveMatrixFile = 'covar6110_R010_RING_nBW_hp12.npy'
+  #saveMatrixFile = 'covar6110_R010_RING_nBW_hp12.npy'
   #maskFile = '/shared/Data/PSG/hundred_point/ISWmask2_din1_R160.fits'
   #saveMatrixFile = 'covar9875_R160b.npy'
-  
+
+  # huge mask
+  maskFile = '/Data/PSG/hundred_point/ISWmask_RING_R160.fits' #19917 pixels
+  saveMatrixFile = 'covar19917_ISWout_bws_hp12_RING.npy'
+  covMat = makeCmatrix(maskFile, ISWoutFile, highpass=12, beamSmooth=True, pixWin=True, nested=False)
+  # took 24.83 hours
+
+  # use ISWin to model expected signal
+  #maskFile = '/shared/Data/PSG/ten_point/ISWmask_din1_R010.fits'
+  #saveMatrixFile = 'covar6110_R010_ISWin_hp12.npy'
+  #covMat = makeCmatrix(maskFile, ISWinFile, highpass=12, nested=True)
+
   #covMat = makeCmatrix(maskFile, ISWoutFile)
-  covMat = makeCmatrix(maskFile, ISWoutFile, highpass=12, beamSmooth=False, pixWin=False, lmax=2200)
+  #covMat = makeCmatrix(maskFile, ISWoutFile, highpass=12, beamSmooth=False, pixWin=False, lmax=2200)
   print 'time elapsed: ',int((time.time()-startTime)/60),' minutes'
   symSave(covMat,saveMatrixFile)
   """
