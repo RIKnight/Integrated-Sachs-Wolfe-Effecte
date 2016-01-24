@@ -24,6 +24,8 @@
     Added nested switch; ZK, 2015.10.02
     Added newMap switch; ZK, 2015.10.12
     Added rmax,npoints to makeISWProfile; ZK, 2015.10.16
+    Broke main function apart into separate functions potentially usable by
+      other programs; Added makeMasks and showMap; ZK, 2016.01.19
 
 """
 
@@ -74,166 +76,311 @@ def makeISWProfile(MFile,zCent,profileFile,noSave=False,rmax=400,npoints=101):
     np.savetxt(profileFile,np.vstack((impactDomain,ISWRange)).T)
   return impactDomain,ISWRange
 
+def getComDist(zMax=1.0,nSteps=5000):
+  """
+  Purpose:
+      calculate an array of comoving distances for given z values
+  Args:
+      zMax: The maximum redshift to calculate out to
+        Default: 1 (further than all clusters in survey)
+      nSteps: The number of steps to use in the discrete sum
+        which approximates integration
+        Default: 5000
+  Uses:
+      ISWprofile.py as ISW for ClusterVoid parameters
+      cosmography.py for comoving distance calculation
+  Returns:
+      zVals: an array of redshift values
+      comDists: a corresponding array of comoving distances
+  """
+  # get parameters from ISW.ClusterVoid
+  H_0     = ISW.ClusterVoid.H_0      #km/sec/Mpc
+  Omega_M = ISW.ClusterVoid.Omega_M
+  Omega_L = ISW.ClusterVoid.Omega_L
+  #Omega_k = 0.0 # not included in ClusterVoid
+  c_light = ISW.ClusterVoid.c_light  #km/sec
+  #DH = c_light/H_0 # hubble distance in Mpc
+  print 'H_0: ',H_0
+
+  # find comoving distance to redshift in Mpc
+  # currently has omega_k = 0 hardcoded
+  zVals, comDists = cosmography.ComovingDistance(zMax,Omega_M,Omega_L,nSteps,H_0)
+  return zVals,comDists
 
 
-doPlot = True
-CMBtemp = 2.7260 # +-0.0013 K (WMAP) Fixen, 2009 
-
-
-# get parameters from ISW.ClusterVoid
-H_0     = ISW.ClusterVoid.H_0      #km/sec/Mpc
-Omega_M = ISW.ClusterVoid.Omega_M
-Omega_L = ISW.ClusterVoid.Omega_L
-Omega_k = 0.0 # not included in ClusterVoid
-c_light = ISW.ClusterVoid.c_light  #km/sec
-DH = c_light/H_0 # hubble distance in Mpc
-print 'H_0: ',H_0
-
-# find comoving distance to redshift in Mpc
-# currently has omega_k = 0 hardcoded
-zMax = 1 # further than all clusters in survey
-nSteps = 5000 # for discrete sum appx. to integration
-zVals, comDists = cosmography.ComovingDistance(zMax,Omega_M,Omega_L,nSteps,H_0)
-comovInterp = interp1d(zVals,comDists)
-
-
-nside = 64 #1024
-nested = False
-print 'NSIDE=',nside,' NESTED=',nested
-# load HEALpix coordinates file
-datadir = '/shared/Data/'
-if nside == 64:
-  if nested:
-    coordfile = 'pixel_coords_map_nested_galactic_res6.fits'
-  else: # 'RING'
-    coordfile = 'pixel_coords_map_ring_galactic_res6.fits'
-if nside == 1024:
-  if nested:
-    coordfile = 'pixel_coords_map_nested_galactic_res10.fits'
-  else: # 'RING'
-    coordfile = 'pixel_coords_map_ring_galactic_res10.fits'
-# from header: field 1 is longitude, field 2 is latitude; both in degrees
-print 'loading coordinates from file ',coordfile
-longitudes,latitudes = hp.read_map(datadir+coordfile,(0,1),nest=nested)
-
-# load GNS catalog coordinates
-clusterFile = '/shared/Data/Gr08_clustercat.txt'
-voidFile    = '/shared/Data/Gr08_voidcat.txt'
-#clusterFile = '/shared/Data/Gr08_clcat_trunc1.txt' #truncated catalog for 3 cl, 3 vo close together
-#voidFile    = '/shared/Data/Gr08_vocat_trunc1.txt'
-#clusterFile = '/shared/Data/Gr08_clcat_trunc2.txt' #truncated catalog for 2 cl, 2 vo far apart
-#voidFile    = '/shared/Data/Gr08_vocat_trunc2.txt'
-cz,cra,cdec,cmean_r_sky,cmax_r_sky,cvol,cd_all,cd_pos,cd_max,cdenscontrast,cprob = np.loadtxt(clusterFile,skiprows=1,unpack=True)
-vz,vra,vdec,vmean_r_sky,vmax_r_sky,vvol,vd_all,vd_neg,vd_min,vdenscontrast,vprob = np.loadtxt(voidFile,skiprows=1,unpack=True)
-
-# transform coordinates
-r = hp.rotator.Rotator(coord=['C','G']) # from equitorial to galactic
-cgl,cgb = r(cra,cdec,lonlat=True)
-vgl,vgb = r(vra,vdec,lonlat=True)
-
-# collect filenames
-overmassDirectory = '/shared/Data/PSG/'
-ISWDirectory = '/shared/Data/PSG/hundred_point/'
-directoryFiles = listdir(overmassDirectory)
-overmassFiles = [file for file in directoryFiles if 'overmass' in file]
-
-# just do one file for now
-overmassFiles = [file for file in overmassFiles if 'R120' in file]
-newProfile = True
-newMap = True#False
-
-
-# create healpix maps
-
-zCent = 0.52 # used by PSG for median of GNS catalog
-D_comov = comovInterp(zCent)
-print 'redshift: ',zCent,', comoving dist: ',D_comov,' Mpc'
-
-rmax = 1200 #Mpc, twice the rmax of overmass profiles
-npoints = 101
-
-for omFile in overmassFiles:
-  # get ISW profile
-  ISWProfileFile = 'ISWprofile'+omFile[8:] # 'overmass' is at start of omFile and has 8 characters
-  if newProfile:
-    print 'reading file ',omFile
-    impactDomain,ISWRange = makeISWProfile(overmassDirectory+omFile,zCent,ISWDirectory+ISWProfileFile,rmax=rmax,npoints=npoints)
+def getMapCoords(nside,nested):
+  """
+  Purpose:
+      Load map coordinates from fits file
+  Args:
+      nside: must be 64 or 1024
+      nested: True or False.
+        the NESTED vs RING parameter for healpy functions
+  Returns:
+      the longitude,latitude of pixels as two healix maps
+  """
+  datadir = '/Data/'
+  if nside == 64:
+    if nested:
+      coordfile = 'pixel_coords_map_nested_galactic_res6.fits'
+    else: # 'RING'
+      coordfile = 'pixel_coords_map_ring_galactic_res6.fits'
+  elif nside == 1024:
+    if nested:
+      coordfile = 'pixel_coords_map_nested_galactic_res10.fits'
+    else: # 'RING'
+      coordfile = 'pixel_coords_map_ring_galactic_res10.fits'
   else:
-    print 'loading file ',ISWProfileFile
-    impactDomain,ISWRange = np.loadtxt(ISWDirectory+ISWProfileFile,unpack=True)
-  print 'impactDomain: ',impactDomain,' Mpc'
-  print 'ISWRange: ',ISWRange,' DeltaT/T'
+    print 'error; unknown NSIDE: ',nside
+    return 0
+  # from header: field 1 is longitude, field 2 is latitude; both in degrees
+  print 'loading coordinates from file ',coordfile
+  longitudes,latitudes = hp.read_map(datadir+coordfile,(0,1),nest=nested)
+  return longitudes,latitudes
 
-  if newMap:
-    # find cutoff radius at cutoff*100% of maximum amplitude
-    cutoff = 0.02
-    maxAmp = ISWRange[0]
-    impactLookup = interp1d(ISWRange,impactDomain,kind='cubic')
-    print 'maxAmp, cutoff, product: ',maxAmp,cutoff,maxAmp*cutoff
-    maxRadius = impactLookup(maxAmp*cutoff)
-    print 'max radius: ',maxRadius, ' Mpc'
-    #maxRadius = impactDomain[-1] #Mpc
+def getGNScoords():
+  """
+  Purpose:
+    extract void and cluster coordinates from GNS catalog and transform into
+      galactic coordinate system
+  Returns:
+    cgl: cluster galactic longitude
+    cgb: cluster galactic latitude
+    vgl: void galactic longitude
+    vgb: void galactic latitude
+  """
+  clusterFile = '/Data/Gr08_clustercat.txt'
+  voidFile    = '/Data/Gr08_voidcat.txt'
+  #clusterFile = '/Data/Gr08_clcat_trunc1.txt' #truncated catalog for 3 cl, 3 vo close together
+  #voidFile    = '/Data/Gr08_vocat_trunc1.txt'
+  #clusterFile = '/Data/Gr08_clcat_trunc2.txt' #truncated catalog for 2 cl, 2 vo far apart
+  #voidFile    = '/Data/Gr08_vocat_trunc2.txt'
+  cz,cra,cdec,cmean_r_sky,cmax_r_sky,cvol,cd_all,cd_pos,cd_max,cdenscontrast,cprob = np.loadtxt(clusterFile,skiprows=1,unpack=True)
+  vz,vra,vdec,vmean_r_sky,vmax_r_sky,vvol,vd_all,vd_neg,vd_min,vdenscontrast,vprob = np.loadtxt(voidFile,skiprows=1,unpack=True)
 
-    # for easier calculations, use maxRadius as arc length instead of tangential length
-    #maxAngle = np.arctan(maxRadius/D_comov) #radians
-    maxAngle = maxRadius/D_comov #radians
-    print 'radius for disc: ',maxAngle*180/np.pi, ' degrees'
+  # transform catalog coordinates
+  r = hp.rotator.Rotator(coord=['C','G']) # from equitorial to galactic
+  cgl,cgb = r(cra,cdec,lonlat=True)
+  vgl,vgb = r(vra,vdec,lonlat=True)
 
-    # create ISW signal interpolation function
-    
-    ## what about central 10 Mpc? Use negative of smallest 2 r values and interp
-    ## also add zero ISW point at 2* max radius
-    #impactDomain = np.append([-1*impactDomain[1],-1*impactDomain[0]],np.append(impactDomain,2*impactDomain[-1]))
-    #ISWRange = np.append([ISWRange[1],ISWRange[0]],np.append(ISWRange,[0]))
-    #ISWinterp = interp1d(impactDomain,ISWRange,kind='cubic')
-    ISWinterp = interp1d(impactDomain,ISWRange)
-
-    impactTest = np.linspace(0,maxRadius,100)
-    ISWTest = ISWinterp(impactTest)
-
-    if doPlot:
-      plt.plot(impactDomain,ISWRange) # data points used to make interpolation
-      plt.plot(impactTest,ISWTest) # from interpolation function
-      plt.xlabel('r [Mpc]')
-      plt.ylabel('ISW: DeltaT / T')
-      plt.show()
-
-    numCV = 50
-    #numCV = 2
-    mapArray = np.zeros(hp.nside2npix(nside))
-    mask     = np.zeros(hp.nside2npix(nside))
-    cCentralVec = glgb2vec(cgl,cgb) #returns array of unit vectors
-    vCentralVec = glgb2vec(vgl,vgb) #returns array of unit vectors
-    for cvNum in range(numCV):
-      print 'starting cv number ',cvNum+1
-
-      # cluster
-      myPixels = hp.query_disc(nside,cCentralVec[cvNum],maxAngle,nest=nested)
-      numPix = myPixels.size
-      for pixNum in range(numPix):
-        myGb = latitudes[myPixels[pixNum]]
-        myGl = longitudes[myPixels[pixNum]]
-        myVec = glgb2vec(myGl,myGb) #returns unit vector
-        angSep = np.arccos(np.dot(cCentralVec[cvNum],myVec))
-        mapArray[myPixels[pixNum]] -= ISWinterp(angSep*D_comov) # -for sign error in PSG
-        mask[    myPixels[pixNum]] = 1
-      
-      # void
-      myPixels = hp.query_disc(nside,vCentralVec[cvNum],maxAngle,nest=nested)
-      numPix = myPixels.size
-      for pixNum in range(numPix):
-        myGb = latitudes[myPixels[pixNum]]
-        myGl = longitudes[myPixels[pixNum]]
-        myVec = glgb2vec(myGl,myGb) #returns unit vector
-        angSep = np.arccos(np.dot(vCentralVec[cvNum],myVec))
-        mapArray[myPixels[pixNum]] += ISWinterp(angSep*D_comov) # +for sign error in PSG
-        mask[    myPixels[pixNum]] = 1
-
-    # 'overmass' is at start of omFile and has 8 characters; 'txt' is at end
-    ISWMap = 'ISWmap_RING'+omFile[8:-3]+'fits' 
-    hp.write_map(ISWDirectory+ISWMap,mapArray*CMBtemp,nest=nested,coord='GALACTIC')
-    ISWMask = 'ISWmask_RING'+omFile[8:-3]+'fits' 
-    hp.write_map(ISWDirectory+ISWMask,mask,nest=nested,coord='GALACTIC')
+  return cgl,cgb,vgl,vgb
 
 
+def makeMasks(nside=64,nested=False,ISWDir='/Data/PSG/hundred_point/'):
+  """
+  Purpose:
+      Makes a set of masks around GNS coordinates of various apertures
+  Args:
+      nside:
+      nested:
+      ISWDir:
+
+  Returns:
+      writes healpix files to ISWDir containing masks
+  """
+
+  # load HEALpix coordinates file
+  print 'NSIDE=',nside,' NESTED=',nested
+  longitudes,latitudes = getMapCoords(nside,nested)
+
+  # load GNS catalog coordinates
+  cgl,cgb,vgl,vgb = getGNScoords()
+
+  # set radii for apertures around coordinate locations
+  radiiDeg = np.array([4,4.5,5,5.5,6,6.5,7,7.5,8,8.5,9,9.5,10,10.5,11,11.5,12]) #degrees
+  radii = radiiDeg*np.pi/180. # converted to radians
+
+  numCV = 50 # number of clusters and voids in catalog
+  for radNum, radius in enumerate(radii):
+      print 'starting radius ',radiiDeg[radNum],' degrees: '
+      mask     = np.zeros(hp.nside2npix(nside))
+      cCentralVec = glgb2vec(cgl,cgb) #returns array of unit vectors
+      vCentralVec = glgb2vec(vgl,vgb) #returns array of unit vectors
+      for cvNum in range(numCV):
+        #print 'starting (cluster,void) number ',cvNum+1
+        # cluster
+        myPixels = hp.query_disc(nside,cCentralVec[cvNum],radius,nest=nested)
+        mask[myPixels] = 1
+        # void
+        myPixels = hp.query_disc(nside,vCentralVec[cvNum],radius,nest=nested)
+        mask[myPixels] = 1
+      radString = str("%04.1f" %radiiDeg[radNum])
+      pixNumStr = str(int(np.sum(mask)))
+      print 'number of pixels for radius '+radString+ ': '+pixNumStr
+      maskFile = 'ISWmask_'+radString+'deg_'+pixNumStr+'pix.fits'
+      hp.write_map(ISWDir+maskFile,mask,nest=nested,coord='GALACTIC')
+
+
+def showMap(mapFile,nested=False,return_projected_map=False,
+            title = 'ISW map over SDSS region'):
+  """
+  Purpose:
+      make orthographic plots of maps or masks over the SDSS region
+  Note:
+      This is translated from IDL function sdss_plot.pro.  The IDL
+        graphics are superior to the ones available in python, and
+        the plotting functions have more options.
+  Args:
+      mapFile:
+      nested:
+      return_projected_map: pass to orthview, get back numpy map
+        note: I don't know how to use this now 2016.01.19
+      title: the title of the plot
+  Returns:
+      if return_projected_map is set: the projected map in a numpy array
+  """
+
+
+  #subTitle = 'equitorial coordinates with RA flipped'
+  map = hp.read_map(mapFile,nest=nested)
+  projected = hp.orthview(map,rot=[180,35],coord=['G','C'],half_sky=True,
+                          nest=nested,flip='geo',title=title,
+                          return_projected_map=return_projected_map)
+  hp.graticule(dpar=30,dmer=30)
+  plt.show()
+
+  return projected
+
+################################################################################
+# testing code
+
+def test(nested=False,doPlot=True,nside=64):
+  """
+  Note that this is not a rigorous testing function
+  Purpose:
+      reads overmass files from overmass directory and creates ISW maps and masks
+        using overmass profiles
+
+  Args:
+      nested:
+      doPlot:
+      NSIDE:
+
+  Returns:
+      writes ISW maps and masks to disk
+  """
+
+  CMBtemp = 2.7260 # +-0.0013 K (WMAP) Fixen, 2009
+
+  # create comoving distance function
+  zVals, comDists = getComDist(zMax=1.0,nSteps=5000)
+  comovInterp = interp1d(zVals,comDists)
+
+  # load HEALpix coordinates file
+  print 'NSIDE=',nside,' NESTED=',nested
+  longitudes,latitudes = getMapCoords(nside,nested)
+
+  # load GNS catalog coordinates
+  cgl,cgb,vgl,vgb = getGNScoords()
+
+  # collect filenames
+  overmassDirectory = '/Data/PSG/'
+  ISWDirectory = '/Data/PSG/hundred_point/'
+  directoryFiles = listdir(overmassDirectory)
+  overmassFiles = [file for file in directoryFiles if 'overmass' in file]
+
+  # just do one file for now
+  overmassFiles = [file for file in overmassFiles if 'PSGplot' in file]
+  newProfile = True
+  newMap = True#False
+
+
+  # create healpix maps
+
+  zCent = 0.52 # used by PSG for median of GNS catalog
+  D_comov = comovInterp(zCent)
+  print 'redshift: ',zCent,', comoving dist: ',D_comov,' Mpc'
+
+  rmax = 800 #Mpc, 2x PSGplot max
+  #rmax = 1200 #Mpc, twice the rmax of overmass profiles
+  npoints = 101
+
+  for omFile in overmassFiles:
+    # get ISW profile
+    ISWProfileFile = 'ISWprofile'+omFile[8:] # 'overmass' is at start of omFile and has 8 characters
+    if newProfile:
+      print 'reading file ',omFile
+      impactDomain,ISWRange = makeISWProfile(overmassDirectory+omFile,zCent,ISWDirectory+ISWProfileFile,rmax=rmax,npoints=npoints)
+    else:
+      print 'loading file ',ISWProfileFile
+      impactDomain,ISWRange = np.loadtxt(ISWDirectory+ISWProfileFile,unpack=True)
+    print 'impactDomain: ',impactDomain,' Mpc'
+    print 'ISWRange: ',ISWRange,' DeltaT/T'
+
+    if newMap:
+      # find cutoff radius at cutoff*100% of maximum amplitude
+      cutoff = 0.02
+      maxAmp = ISWRange[0]
+      impactLookup = interp1d(ISWRange,impactDomain,kind='cubic')
+      print 'maxAmp, cutoff, product: ',maxAmp,cutoff,maxAmp*cutoff
+      maxRadius = impactLookup(maxAmp*cutoff)
+      print 'max radius: ',maxRadius, ' Mpc'
+      #maxRadius = impactDomain[-1] #Mpc
+
+      # for easier calculations, use maxRadius as arc length instead of tangential length
+      #maxAngle = np.arctan(maxRadius/D_comov) #radians
+      maxAngle = maxRadius/D_comov #radians
+      print 'radius for disc: ',maxAngle*180/np.pi, ' degrees'
+
+      # create ISW signal interpolation function
+
+      ## what about central 10 Mpc? Use negative of smallest 2 r values and interp
+      ## also add zero ISW point at 2* max radius
+      #impactDomain = np.append([-1*impactDomain[1],-1*impactDomain[0]],np.append(impactDomain,2*impactDomain[-1]))
+      #ISWRange = np.append([ISWRange[1],ISWRange[0]],np.append(ISWRange,[0]))
+      #ISWinterp = interp1d(impactDomain,ISWRange,kind='cubic')
+      ISWinterp = interp1d(impactDomain,ISWRange)
+
+      impactTest = np.linspace(0,maxRadius,100)
+      ISWTest = ISWinterp(impactTest)
+
+      if doPlot:
+        plt.plot(impactDomain,ISWRange) # data points used to make interpolation
+        plt.plot(impactTest,ISWTest) # from interpolation function
+        plt.xlabel('r [Mpc]')
+        plt.ylabel('ISW: DeltaT / T')
+        plt.show()
+
+      numCV = 50
+      #numCV = 2
+      mapArray = np.zeros(hp.nside2npix(nside))
+      mask     = np.zeros(hp.nside2npix(nside))
+      cCentralVec = glgb2vec(cgl,cgb) #returns array of unit vectors
+      vCentralVec = glgb2vec(vgl,vgb) #returns array of unit vectors
+      for cvNum in range(numCV):
+        print 'starting cv number ',cvNum+1
+
+        # cluster
+        myPixels = hp.query_disc(nside,cCentralVec[cvNum],maxAngle,nest=nested)
+        numPix = myPixels.size
+        for pixNum in range(numPix):
+          myGb = latitudes[myPixels[pixNum]]
+          myGl = longitudes[myPixels[pixNum]]
+          myVec = glgb2vec(myGl,myGb) #returns unit vector
+          angSep = np.arccos(np.dot(cCentralVec[cvNum],myVec))
+          mapArray[myPixels[pixNum]] -= ISWinterp(angSep*D_comov) # -for sign error in PSG
+          mask[    myPixels[pixNum]] = 1
+
+        # void
+        myPixels = hp.query_disc(nside,vCentralVec[cvNum],maxAngle,nest=nested)
+        numPix = myPixels.size
+        for pixNum in range(numPix):
+          myGb = latitudes[myPixels[pixNum]]
+          myGl = longitudes[myPixels[pixNum]]
+          myVec = glgb2vec(myGl,myGb) #returns unit vector
+          angSep = np.arccos(np.dot(vCentralVec[cvNum],myVec))
+          mapArray[myPixels[pixNum]] += ISWinterp(angSep*D_comov) # +for sign error in PSG
+          mask[    myPixels[pixNum]] = 1
+
+      # 'overmass' is at start of omFile and has 8 characters; 'txt' is at end
+      ISWMap = 'ISWmap_RING'+omFile[8:-3]+'fits'
+      hp.write_map(ISWDirectory+ISWMap,mapArray*CMBtemp,nest=nested,coord='GALACTIC')
+      ISWMask = 'ISWmask_RING'+omFile[8:-3]+'fits'
+      hp.write_map(ISWDirectory+ISWMask,mask,nest=nested,coord='GALACTIC')
+
+
+
+
+if __name__=='__main__':
+  test()
 

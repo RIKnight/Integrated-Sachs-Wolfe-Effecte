@@ -26,6 +26,8 @@
     Added error checking for subMatrix; ZK, 2016.01.14
     Removed forSMICA functionality from makeCmatrix, as it belongs
       in filter_map and was erroneously copied here; ZK, 2016.01.18
+    Split subMatrix into subMatrix and subMatrix2. The second version
+      can take data arrays wheras the first takes filenames; ZK, 2016.01.20
 
 """
 
@@ -237,28 +239,43 @@ def cMatCorrect(cMatrix):
     cMatrixCorrected = cMatrix - c1/size - c2mat/size + c3/size**2
     return cMatrixCorrected
 
-
 def subMatrix(maskFile,bigMaskFile,cMatrixFile,nested=False):
   """
-    function to extract a C matrix from a matrix made for a larger set of pixels.
-    
-    (please modify this to accept a list of maskFiles and return a list of C matrices)
-
-    INPUTS:
+  Purpose:
+      function to extract a C matrix from a matrix made for a larger set of pixels.
+  Args:
       maskFile: FITS file containg a mask indicating which pixels to use
       bigMaskFile: FITS file containing a mask that corresponds to the pixels
         used to create the cMatrix stored in cMatrixFile
       cMatrixFile: numpy file containing a symSave C matrix
       nested: NESTED vs RING parameter to be used with healpy functions
-    OUTPUTS:
-      returns a C matrix
+  Uses:
+      submatrix2
+  Returns:
+      returns a numpy array containing a C matrix
   """
-  # read mask files
+
   mask = hp.read_map(maskFile,nest=nested)
   bigMask = hp.read_map(bigMaskFile,nest=nested)
-  # read C matrix file
-  print 'loading C matrix from file...'
+  print 'loading C matrix from file ',cMatrixFile
   cMatrix = symLoad(cMatrixFile)
+  return subMatrix2(mask,bigMask,cMatrix,nested=nested)
+
+
+def subMatrix2(mask,bigMask,cMatrix,nested=False):
+  """
+  Purpose:
+      function to extract a C matrix from a matrix made for a larger set of pixels.
+  Args:
+      mask: a mask indicating which pixels to use
+      bigMask: a mask that corresponds to the pixels
+        used to create the cMatrix
+      cMatrix: a numpy array containing a C matrix
+      nested: NESTED vs RING parameter to be used with healpy functions
+
+  Returns:
+      returns a numpy array containing a C matrix
+  """
 
   maskVec = np.where(mask)[0] #array of indices
   bigMaskVec = np.where(bigMask)[0] #array of indices
@@ -308,6 +325,9 @@ def choInvert(cMatrix):
   return cMatInv
 
 
+################################################################################
+# testing code
+
 def test():
   """
     code for testing the other functions in this module
@@ -338,25 +358,31 @@ def test():
   # test makeCmatrix
   # measured time: 4.25 hrs for 6110 point mask
   startTime = time.time()
+
+  # old files no longer used
   #saveMatrixFile = 'covar6110_R010_lowl.npy'
   #saveMatrixFile = 'covar6110_R010.npy'
-  #saveMatrixFile = 'covar6110_R010_RING_nBW_hp12.npy'
   #maskFile = '/shared/Data/PSG/hundred_point/ISWmask2_din1_R160.fits'
   #saveMatrixFile = 'covar9875_R160b.npy'
 
   # huge mask
-  maskFile = '/Data/PSG/hundred_point/ISWmask_RING_R160.fits' #19917 pixels
-  saveMatrixFile = 'covar19917_ISWout_bws_hp12_RING.npy'
-  covMat = makeCmatrix(maskFile, ISWoutFile, highpass=12, beamSmooth=True, pixWin=True, nested=False)
+  #maskFile = 'ISWmask9875_RING.fits' #19917 pixels
+  #saveMatrixFile = 'covar19917_ISWout_bws_hp12_RING.npy'
+  #covMat = makeCmatrix(maskFile, ISWoutFile, highpass=12, beamSmooth=True, pixWin=True, nested=False)
   # took 24.83 hours
 
   # use ISWin to model expected signal
-  #maskFile = '/shared/Data/PSG/ten_point/ISWmask_din1_R010.fits'
-  #saveMatrixFile = 'covar6110_R010_ISWin_hp12.npy'
+  #maskFile = 'ISWmask6110_RING.fits'
+  #saveMatrixFile = 'covar6110_ISWin_bws_hp12_RING.npy'
   #covMat = makeCmatrix(maskFile, ISWinFile, highpass=12, nested=True)
+  maskFile = 'ISWmask9875_RING.fits' #9875 pixels
+  saveMatrixFile = 'covar9875_ISWin_bws_hp12_RING.npy'
+  covMat = makeCmatrix(maskFile, ISWinFile, highpass=12, beamSmooth=True, pixWin=True, nested=False)
 
-  #covMat = makeCmatrix(maskFile, ISWoutFile)
-  #covMat = makeCmatrix(maskFile, ISWoutFile, highpass=12, beamSmooth=False, pixWin=False, lmax=2200)
+  # no beam nor window smoothing, high lmax
+  #saveMatrixFile = 'covar6110_ISWout_nBW_hp12_RING.npy'
+  #covMat = makeCmatrix(maskFile, ISWoutFile, highpass=12, beamSmooth=False, pixWin=False, lmax=2200, nested=False)
+
   print 'time elapsed: ',int((time.time()-startTime)/60),' minutes'
   symSave(covMat,saveMatrixFile)
   """

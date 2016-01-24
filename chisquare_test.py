@@ -57,6 +57,10 @@ def cInvT(covMat,Tvec):
     TInvC = np.dot(TInv,covMat)        # left multiply
     return TInvC.T/np.dot(TInvC,TInvC) # return right inverse
 
+
+################################################################################
+# testing code
+
 def test(case = 10,nTrials=1000,useInverse=True,nested=False):
     """
         function for testing the expectation value <T*C**-1*T> = N_pix

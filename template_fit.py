@@ -18,6 +18,8 @@
     Moved test data from test function to getTestData function; ZK, 2016.01.06
     Fixed nested vs ring misconception in hp.read_map; ZK, 2016.01.06
     Added nested as a passable parameter to 2 functions; ZK, 2016.01.09
+    Broke getTestData apart into smaller pieces; ZK, 2016.01.20
+    Modified ISW file names; ZK, 2016.01.21
 
 """
 
@@ -114,8 +116,104 @@ def KSnorm(rvs,loc,sigma,nBins=10,showPDF=False,showCDF=False):
     plt.plot(x,stats.norm.cdf(x,loc=loc,scale=sigma))
     plt.title('K-S CDF at amplitude '+str(loc)+'; K-S statistic = '+str(KSresult[0]))
     plt.show()
-
   return KSresult
+
+def getFilenames(doHighPass=True, useBigMask=False):
+  """
+  Purpose:
+      Load filenames into variables
+  Note:
+      CMBFiles have unit microK, ISWFiles have unit K, and cMatrixFile has units K**2 or microK**2
+  Args:
+      doHighPass: set this to use the highpass filtered CMB, ISW, cMatrix, and invCMat files
+      useBigMask: there are two mask sizes specified in this function.
+        Set this to use the large size, otherwise, the small one will be used.
+  Returns:
+      CMBFiles,ISWFiles,maskFile,cMatrixFile,iCMatFile
+        CMBFiles[0]: mask with anafast; CMBFiles[1]: no mask with anafast
+        ISWFiles[0]: r10%; ISWFiles[1]: r02%; ISWRiles[2]: PSGplot r02%
+        CMBFiles have unit microK, ISWFiles have unit K, and cMatrixFile has units K**2
+
+  """
+  PSG = '/Data/PSG/'
+  if doHighPass:
+    ISWFiles = np.array([PSG+'hundred_point/ISWmap_RING_r10_R010_hp12.fits',  #radius to 10% max (ring)
+                         PSG+'hundred_point/ISWmap_RING_R010_hp12.fits',      #radius to  2% max (ring)
+                         PSG+'hundred_point/ISWmap_RING_PSGplot_hp12.fits'])  # from PSG fig.1 overmass
+    CMBFiles = np.array([PSG+'planck_filtered.fits',             # used mask with anafast (ring)
+                         PSG+'planck_filtered_nomask.fits'])     # no mask with anafast   (ring)
+  else:
+    ISWFiles = np.array([PSG+'hundred_point/ISWmap_RING_r10_R010_nhp.fits',   #radius to 10% max (ring)
+                         PSG+'hundred_point/ISWmap_RING_R010_nhp.fits',       #radius to  2% max (ring)
+                         PSG+'hundred_point/ISWmap_RING_PSGplot_nhp.fits'])   # from PSG fig.1 overmass
+    CMBFiles = np.array([PSG+'planck_filtered_nhp.fits',         # used mask with anafast (ring)
+                         PSG+'planck_filtered_nomask_nhp.fits']) # no mask with anafast   (ring)
+  covDir = '/Data/covariance_matrices/'
+  if useBigMask:
+    maskFile = covDir+'ISWmask9875_RING.fits'
+    if doHighPass:
+      cMatrixFile = covDir+'covar9875_ISWout_bws_hp12_RING.npy'
+      iCMatFile = covDir+'invCovar9875_cho_hp12_RING.npy'
+    else:
+      cMatrixFile = covDir+'covar9875_ISWout_bws_nhp_RING.npy' #haven't made this yet
+      iCMatFile = covDir+'invCovar9875_cho_nhp_RING.npy'       #haven't made this yet
+  else:
+    maskFile = covDir+'ISWmask6110_RING.fits'
+    if doHighPass:
+      cMatrixFile = covDir+'covar6110_ISWout_bws_hp12_RING.npy'
+      iCMatFile = covDir+'invCovar6110_cho_hp12_RING.npy'
+    else:
+      cMatrixFile = covDir+'covar6110_ISWout_bws_nhp_RING.npy' #haven't made this yet
+      iCMatFile = covDir+'invCovar6110_cho_nhp_RING.npy'       #haven't made this yet
+  return CMBFiles,ISWFiles,maskFile,cMatrixFile,iCMatFile
+
+def getInverse(cMatrixFile,iCMatFile,type=3,newInverse=True,noSave=False):
+  """
+  Purpose:
+      get the inverse of the covariance matrix
+  Args:
+      cMatrixFile: the filename storing a numpy covariance matrix
+      iCMatFile: the filename to store a new inverse matrix to or load an existing matrix from
+      type: the type of inversion to do
+        1: LU inverse (lower,upper triangular decomposition)
+        2: RD inverse (eigen decomposition)
+        3: Cho inverse (Cholesky decomposition)
+      newInverse: set this to calculate a new inverse matrix
+        otherwise, no matrix will be inverted and one will be loaded from file
+      noSave: set this to omit saving the new inverse C matrix (does nothing if newInverse=False)
+        Default: True (new matrix will be saved to file iCMatFile)
+  Returns:
+      the inverse of the C matrix
+  """
+  if newInverse:
+    print 'loading C matrix from file ',cMatrixFile  #may want to move this outside this function
+    cMatrix = mcm.symLoad(cMatrixFile)
+    # 2015.12.11: new matrices may have units microK**2 or K**2. Older matrices are all in K**2
+
+    startTime = time.time()
+    if   type == 1: # use LU
+      print 'starting matrix (LU) inversion...'
+      cMatInv = np.linalg.inv(cMatrix)
+    elif type == 2: # use RD
+      print 'calculating eigen decomposition...'
+      w,v = np.linalg.eigh(cMatrix)
+      print 'starting matrix (eigen) inversion...'
+      cMatInv = mcm.RDinvert(w,v)
+    elif type == 3: # use Cho
+      print 'starting matrix (Cholesky) inversion...'
+      cMatInv = mcm.choInvert(cMatrix)
+    else:
+      print 'no type ',type
+      return 0
+    print 'time elapsed for inversion: ',(time.time()-startTime)/60.,' minutes'
+      #took about 2 minutes for np.linalg.inv on 6110**2 matrix
+    if not noSave:
+      np.save(iCMatFile,cMatInv)
+  else:
+    print 'loading inverse C matrix from file ',iCMatFile
+    cMatInv = np.load(iCMatFile)
+  return cMatInv
+
 
 def getTestData(doHighPass=True, useBigMask=False, newInverse=False, matUnitMicro=False,
                 useInverse=True, nested=False):
@@ -145,72 +243,10 @@ def getTestData(doHighPass=True, useBigMask=False, newInverse=False, matUnitMicr
         CMBFiles: list of CMB files
   """
   # file names
-  PSG = '/Data/PSG/'
-  if doHighPass:
-    # testing with 2 variations on ISW map and 2 variations on CMB map
-    ISWFiles = np.array([PSG+'hundred_point/ISWmap_RING_r10_R010_hp11.fits',#radius to 10% max (ring)
-                         PSG+'hundred_point/ISWmap_RING_R010_hp11.fits'])   #radius to  2% max (ring)
-    CMBFiles = np.array([PSG+'planck_filtered.fits',         # used mask with anafast (ring)
-                         PSG+'planck_filtered_nomask.fits']) # no mask with anafast   (ring)
-  else:
-    # testing with 2 variations on ISW map and 2 variations on CMB map
-    ISWFiles = np.array([PSG+'hundred_point/ISWmap_RING_r10_R010.fits',   #radius to 10% max (ring)
-                         PSG+'hundred_point/ISWmap_RING_R010.fits'])      #radius to  2% max (ring)
-    CMBFiles = np.array([PSG+'planck_filtered_nhp.fits',         # used mask with anafast (ring)
-                         PSG+'planck_filtered_nomask_nhp.fits']) # no mask with anafast   (ring)
-
-  if useBigMask:
-    maskFile = PSG+'hundred_point_bad/ISWmask2_din1_R160.fits' #(nested)
-    if doHighPass:
-      cMatrixFile = 'covar9875_R160b.npy'
-      #iCMatFile = 'invCovar_R160.npy'
-      iCMatFile = 'invCovar_R160_RD.npy'
-    else:
-      cMatrixFile = 'covar9875_R160b_nhp.npy' #haven't made this yet
-      iCMatFile = 'invCovar_R160_nhp.npy' #haven't made this yet
-  else:
-    maskFile = PSG+'ten_point/ISWmask_din1_R010.fits' #(nested)
-    if doHighPass:
-      cMatrixFile = 'covar6110_R010.npy'
-      #iCMatFile = 'invCovar_R010.npy'
-      iCMatFile = 'invCovar_R010_RD.npy'
-    else:
-      cMatrixFile = 'covar6110_R010_nhp.npy'
-      iCMatFile = 'invCovar_R010_nhp.npy'
-  # CMBFiles have unit microK, ISWFiles have unit K, and cMatrixFile has units K**2 or microK**2
-
-
-  # nested vs ring parameter for converting data to arrays during loading, if necessary
-  # if True, will convert to nested, if False, will convert to ring
-  #nested = False
+  CMBFiles,ISWFiles,maskFile,cMatrixFile,iCMatFile = getFilenames(doHighPass=doHighPass,useBigMask=useBigMask)
 
   if useInverse:
-    # invert CMatrix
-    useRD = False#True # Overrides useCho
-    useCho = True#False # Overrides default: use LU
-    if newInverse:
-      print 'loading C matrix from file ',cMatrixFile
-      cMatrix = mcm.symLoad(cMatrixFile)
-      # 2015.12.11: new matrices may have units microK**2 or K**2. Older matrices are all in K**2
-
-      startTime = time.time()
-      if useRD:
-        print 'calculating eigen decomposition...'
-        w,v = np.linalg.eigh(cMatrix)
-        print 'starting matrix (eigen) inversion...'
-        cMatInv = mcm.RDinvert(w,v)
-      elif useCho:
-        print 'starting matrix (Cholesky) inversion...'
-        cMatInv = mcm.choInvert(cMatrix)
-      else: # use LU
-        print 'starting matrix (LU) inversion...'
-        cMatInv = np.linalg.inv(cMatrix)
-      print 'time elapsed for inversion: ',(time.time()-startTime)/60.,' minutes'
-        #took about 2 minutes for np.linalg.inv on 6110**2 matrix
-      np.save(iCMatFile,cMatInv)
-    else:
-      print 'loading inverse C matrix from file ',iCMatFile
-      cMatInv = np.load(iCMatFile)
+    cMatInv = getInverse(cMatrixFile,iCMatFile,type=3,newInverse=newInverse,noSave=False)
   else: # do not invert and use cInvT
     print 'loading C matrix from file ',cMatrixFile
     cMatrix = mcm.symLoad(cMatrixFile)

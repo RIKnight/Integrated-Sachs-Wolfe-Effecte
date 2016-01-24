@@ -40,20 +40,13 @@ def test(SNmin=1.0,nested=True):
     """
 
     print 'Starting template fitting on observed data... '
-    # this line gets the test data and does 4 template fits for files specified within
-    #cMatInv,mask,ISWvecs,modelVariances,ISWFiles,CMBFiles = tf.getTestData(doHighPass=True,nested=nested)
-
-    # filenames
-    CMBfile  = '/Data/PSG/planck_filtered_nomask.fits' # no bright star mask when anafast used (ring)
-    ISWfile  = '/Data/PSG/hundred_point/ISWmap_RING_R010_hp11.fits' #(ring)
-    # small mask
-    maskFile = '/Data/PSG/ten_point/ISWmask_din1_R010.fits' #(nested)
-    cMatrixFile = 'covar6110_R010.npy' #(nested)
-    iCMatFile = 'invCovar_R010_cho.npy' #(nested)
-    # big mask
-    #maskFile = '/Data/PSG/hundred_point_bad/ISWmask2_din1_R160.fits'
-    #cMatrixFile = 'covar9875_R160b.npy'
-    #iCMatFile = 'invCovar_R160_RD.npy'
+    # get CMBmap, ISWmap
+    CMBFiles,ISWFiles,maskFile,cMatrixFile,iCMatFile = tf.getFilenames(doHighPass=True, useBigMask=False)
+    # CMBFiles[0]: mask with anafast; CMBFiles[1]: no mask with anafast
+    # ISWFiles[0]: r10%; ISWFiles[1]: r02%; ISWRiles[2]: PSGplot r02%
+    # CMBFiles have unit microK, ISWFiles have unit K, and cMatrixFile has units K**2
+    CMBmap = hp.read_map(CMBFiles[1],nest=nested) *1e-6 # convert microK to K
+    ISWmap = hp.read_map(ISWFiles[1],nest=nested)
 
     # get rotation matrix
     SNrot,invRot = sn.getSNRot()
@@ -63,12 +56,8 @@ def test(SNmin=1.0,nested=True):
     SNFilter,mask = sn.SNavg(maskFile,SNrot, SNmin=SNmin)
     #mask = hp.read_map(maskFile,nest=nested)
 
-    # get SMICA map and extract data vector
-    # CMBFiles have unit microK, ISWFiles have unit K, and cMatrixFile has units K**2
-    # SMICA map highpass filtered, beamsmoothed, and window smoothed:
-    CMBmap = hp.read_map(CMBfile,nest=nested) * 1e-6 # convert microK to K
+    # extract data vectors
     CMBvec = CMBmap[np.where(mask)]
-    ISWmap = hp.read_map(ISWfile,nest=nested)
     ISWvec = ISWmap[np.where(mask)]
 
     # rotate into SN frame

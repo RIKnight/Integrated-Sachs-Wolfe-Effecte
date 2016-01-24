@@ -11,6 +11,7 @@
   MODIFICATION HISTORY:
     Written by Z Knight, 2016.01.08
     Added nested parameter; ZK, 2016.01.09
+    removed tf.getTestData; ZK, 2016.01.20
 
 """
 
@@ -37,9 +38,12 @@ def test(nested=True):
     """
 
     doHighPass = True
-    # this line gets the test data and does 4 template fits for files specified within
     print 'Starting template fitting on observed data... '
-    cMatInv,mask,ISWvecs,modelVariances,ISWFiles,CMBFiles = tf.getTestData(doHighPass=doHighPass,nested=nested)
+    # this line gets the test data and does 4 template fits for files specified within
+    #cMatInv,mask,ISWvecs,modelVariances,ISWFiles,CMBFiles = tf.getTestData(doHighPass=doHighPass,nested=nested)
+    CMBFiles,ISWFiles,maskFile,cMatrixFile,iCMatFile = tf.getFilenames(doHighPass=doHighPass)
+    cMatInv = tf.getInverse(cMatrixFile,iCMatFile,newInverse=False,noSave=False)
+    mask = hp.read_map(maskFile,nest=nested)
 
     # get eigs of c matrix
     newEig = False#True
