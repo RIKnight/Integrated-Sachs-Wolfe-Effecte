@@ -19,6 +19,9 @@
         changed nested default to False; ZK, 2016.01.19
     Consolidated filenames into getFilenames; split getRot into
         getRot and loadRot; removed squigFilter from SNavg; ZK, 2016.01.23
+    Added third mask to list in getFilenames:
+        difference between 9875 and 6110 pixel masks;
+        added same options to getRot, loadRot; ZK, 2016.01.26
 """
 
 import numpy as np
@@ -56,14 +59,15 @@ def invSqrt(matrix):
     sqrtDInv = np.diag(1/np.sqrt(w)) #inverse of square root of eigenvalues on diagonal
     return np.dot(v,np.dot(sqrtDInv,v.T))
 
-def getRot(signalCov,noiseCov,noSave=False):
+def getRot(signalCov,noiseCov,maskNum=0):
     """
 
     Args:
         signalCov: a numpy array containing a signal covariance matrix
         noiseCov: same for noise
-        noSave: set this to skip saving the matrices to file
-            Default: False (matrices will be saved)
+        masknum: the mask to get matrices for.  See getFilenames.
+            Default: 0.  This is not actually as masknum, and indicates
+                that no file should be saved.
     Returns:
         w: a numpy array containing the S/N eigenvalues.
         v: a numpy array containing the S/N eigenvectors.
@@ -72,39 +76,74 @@ def getRot(signalCov,noiseCov,noSave=False):
     """
     # should be the same filenames as in loadRot
     covDir = '/Data/covariance_matrices/'
-    eigValsFile = covDir+'SNeigvals.npy'
-    eigVecsFile = covDir+'SNeigvecs.npy'
+    if maskNum == 1:
+        eigValsFile = covDir+'SNeigvals1.npy'
+        eigVecsFile = covDir+'SNeigvecs1.npy'
+    elif maskNum == 2:
+        eigValsFile = covDir+'SNeigvals2.npy'
+        eigVecsFile = covDir+'SNeigvecs2.npy'
+    elif maskNum == 3:
+        eigValsFile = covDir+'SNeigvals3.npy'
+        eigVecsFile = covDir+'SNeigvecs3.npy'
+    #else:
+    #    print 'no such mask'
+    #    return 0
     startTime = time.time()
     noiseInvSqrt = invSqrt(noiseCov) #symmetric so no need to transpose in next line
     toRotate = np.dot(noiseInvSqrt,np.dot(signalCov,noiseInvSqrt))
     print 'calculating eigenvalues and eigenvectors of N^(-1/2).S.N^(-1/2)...'
     w,v = np.linalg.eig(toRotate)
-    if not noSave:
+    if maskNum != 0:
         np.save(eigValsFile,w)
         np.save(eigVecsFile,v)
     print 'time elapsed for eigen decomposition: ',(time.time()-startTime)/60.,' minutes'
+    # this took 4.8 minutes (ring) for 3765 pixel mask
     # this took ... min (ring) for 6110 pixel mask
+    # this took 85 minutes (ring) for 9875 pixel mask
     return w,v
 
-def loadRot():
+def loadRot(maskNum):
     """
     Purpose:
         loads the S/N eigenvalues and eigenmodes from files
     Note:
         the files must have been already created using getRot or simSN
+    Args:
+        masknum: the mask number to load files for.  See getFilenames.
     Returns:
 
     """
     # must be the same filenames as in getRot
     covDir = '/Data/covariance_matrices/'
-    eigValsFile = covDir+'SNeigvals.npy'
-    eigVecsFile = covDir+'SNeigvecs.npy'
+    if maskNum == 1:
+        eigValsFile = covDir+'SNeigvals1.npy'
+        eigVecsFile = covDir+'SNeigvecs1.npy'
+    elif maskNum == 2:
+        eigValsFile = covDir+'SNeigvals2.npy'
+        eigVecsFile = covDir+'SNeigvecs2.npy'
+    elif maskNum == 3:
+        eigValsFile = covDir+'SNeigvals3.npy'
+        eigVecsFile = covDir+'SNeigvecs3.npy'
+    else:
+        print 'no such mask'
+        return 0
     w = np.load(eigValsFile)
     v = np.load(eigVecsFile)
     return w,v
 
 
 def getFilenames(maskNum):
+    """
+
+    Args:
+        maskNum: to select which mask to use.  These should match the
+            filenames used in template_fit.getFilenames:
+            1: the ~5 degree 6110 pixel mask (Default)
+            2: the ~10 degree 9875 pixel mask
+            3: the difference between the 9875 and 6100 pixel masks
+    Returns:
+
+    """
     covDir = '/Data/covariance_matrices/'
     if maskNum == 1:
         maskFile       = covDir+'ISWmask6110_RING.fits'
@@ -118,6 +157,12 @@ def getFilenames(maskNum):
         sMatrixFile    = covDir+'covar9875_ISWin_bws_hp12_RING.npy'
         saveRotFile    = covDir+'SNrot_9875.npy'
         saveRotInvFile = covDir+'SNrot_9875_inv.npy'
+    elif maskNum == 3:
+        maskFile       = covDir+'ISWmask9875minus6110_RING.fits'
+        nMatrixFile    = covDir+'covar9875minus6110_ISWout_bws_hp12_RING.npy'
+        sMatrixFile    = covDir+'covar9875minus6110_ISWin_bws_hp12_RING.npy'
+        saveRotFile    = covDir+'SNrot_9875minus6110.npy'
+        saveRotInvFile = covDir+'SNrot_9875minus6110_inv.npy'
     else:
         print 'no such mask'
         return 0
@@ -137,6 +182,7 @@ def getSNRot(newRot=False,maskNum = 1):
         maskNum: to select which mask to use
             1: the ~5 degree 6110 pixel mask (Default)
             2: the ~10 degree 9875 pixel mask
+            3: the difference between the 9875 and 6100 pixel masks
     Uses:
         Covariance matrix files indicated in function
     Returns:
@@ -159,13 +205,15 @@ def getSNRot(newRot=False,maskNum = 1):
         # maybe I should combine these next two functions into one, since the each call eigh(nMatrix)
         nSqrt = mSqrt(nMatrix)
         nInvSqrRoot = invSqrt(nMatrix)
-        SNeigvals,rMatrix = getRot(sMatrix,nMatrix) #SNeigvals not used in this function
+        SNeigvals,rMatrix = getRot(sMatrix,nMatrix,maskNum=maskNum) #SNeigvals not used in this function
         myRot = np.dot(rMatrix.T,nInvSqrRoot)
         invRot = np.dot(nSqrt,rMatrix)
         np.save(saveRotInvFile,invRot)
         np.save(saveRotFile,myRot)
         print 'time elapsed for rotation matrices creation: ',(time.time()-startTime)/60.,' minutes'
+        # this took 7.8 min (ring) for 3765 pixel mask
         # this took 35.1 min (nested) and 33.2 min (ring) for 6110 pixel mask
+        # this took 135 min. (ring) for 9875 pixel mask
     else:
         print 'loading rotation matrices...'
         invRot = np.load(saveRotInvFile)
@@ -286,9 +334,10 @@ def simSN(SNrot,InvRot,nSkies=1000,newSim=True,maskNum=1):
                 4.9 Mb for nSkies = 1e2, 48.9 Mb for 1e3, 488.8 for 1e4;
                 4.89 Gb for 1e5 (ran into VFAT file size limit and program crashed; needed 2.5 hrs to re-do)
             Default: 1000
-        maskNum: number indicating the mask and associated fileset to use.
-            1: the 6110 pixel mask (Default)
-            2: the 9875 pixel mask
+        maskNum: to select which mask to use
+            1: the ~5 degree 6110 pixel mask (Default)
+            2: the ~10 degree 9875 pixel mask
+            3: the difference between the 9875 and 6100 pixel masks
     Returns:
         average and standard deviation of nSkies
     """
@@ -302,9 +351,9 @@ def simSN(SNrot,InvRot,nSkies=1000,newSim=True,maskNum=1):
         nMatrix = mcm.symLoad(nMatrixFile)
         print 'loading signal covariance matrix from file ',sMatrixFile
         sMatrix = mcm.symLoad(sMatrixFile)
-        SNeigvals,rMatrix = getRot(sMatrix,nMatrix)
+        SNeigvals,rMatrix = getRot(sMatrix,nMatrix,maskNum=maskNum)
     else:
-        SNeigvals,rMatrix = loadRot()
+        SNeigvals,rMatrix = loadRot(maskNum)
 
     # open CMBsimSNRsqrArray from file.  Create file first with newSim if needed
     CMBvecSNRsqrArray = SNavg(maskFile,SNrot,nSkies=int(nSkies),nested=False,newSim=newSim)
@@ -333,7 +382,7 @@ def getSNfilter(SNeigvals,SNmin):
 ################################################################################
 # testing code
 
-def test(nested=False,SNmin=1e-3,maskNum=1):
+def test(nested=False,SNmin=1e-3,maskNum=1,newRot=False):
     """
     Purpose:
         test the other functions in this file
@@ -345,6 +394,7 @@ def test(nested=False,SNmin=1e-3,maskNum=1):
         maskNum: number indicating the mask and associated fileset to use.
             1: the 6110 pixel mask (Default)
             2: the 9875 pixel mask
+        newRot: set this to find a new rotation matrix, eg, for a new mask.
 
     Returns:
 
@@ -365,7 +415,7 @@ def test(nested=False,SNmin=1e-3,maskNum=1):
     sMatrix = np.dot(sMatrix,sMatrix.T) #creates positive semi-definite matrix
     print 'sMatrix: '
     print sMatrix
-    SNeigvals,rMatrix = getRot(sMatrix,nMatrix,noSave=True)
+    SNeigvals,rMatrix = getRot(sMatrix,nMatrix) #no save
     print 'check for diagonal: '
     diag = np.dot(rMatrix.T,np.dot(nInvSqrRoot,np.dot(sMatrix,np.dot(nInvSqrRoot,rMatrix))))
     print diag
@@ -387,7 +437,7 @@ def test(nested=False,SNmin=1e-3,maskNum=1):
     # start testing with simulated CMB data:
 
     # get rotation matrices for transforming into and out of SN frame
-    SNrot,invRot = getSNRot(maskNum=maskNum, newRot=False)#True)
+    SNrot,invRot = getSNRot(maskNum=maskNum, newRot=newRot)
     snRotate = lambda vecIn: np.dot(SNrot,vecIn)
     snInvRot = lambda vecIn: np.dot(invRot,vecIn)
 
@@ -399,7 +449,7 @@ def test(nested=False,SNmin=1e-3,maskNum=1):
     CMBvecSNRsqrStd = std
 
     # get eigvals, eigvecs of S/N matrix: N**(-1/2).S.N**(-1/2)
-    SNeigvals,rMatrix = loadRot() # has to be after getRot or simSN
+    SNeigvals,rMatrix = loadRot(maskNum) # has to be after getSNrot(newRot=True), getRot, or simSN
 
     #plot together
     xVals = np.arange(CMBvecSNRsqrAvg.size)
@@ -429,24 +479,36 @@ def test(nested=False,SNmin=1e-3,maskNum=1):
     print 'starting on observational data: '
 
     # if not done in section above:
-    SNeigvals,rMatrix = loadRot() # has to be after getRot or simSN
+    SNeigvals,rMatrix = loadRot(maskNum) # has to be after getRot or simSN
+
+    plt.semilogy(np.sort(SNeigvals))
+    horizontal = np.ones(SNeigvals.size)*SNmin
+    plt.plot(horizontal)
+    plt.xlabel('SN eigenvalue number')
+    plt.ylabel('eigenvalue')
+    plt.title('sorted eigenvalues for mask number '+str(maskNum))
+    plt.show()
+
+    # this part is set up for masknum=1 only.
 
     # get CMBmap, ISWmap; extract vectors and rotate to SN frame
-    CMBFiles,ISWFiles,maskFile,cMatrixFile,iCMatFile = tf.getFilenames()
-    # CMBFiles[0]: mask with anafast; CMBFiles[1]: no mask with anafast
-    # ISWFiles[0]: r10%; ISWFiles[1]: r02%; ISWRiles[2]: PSGplot r02%
-    # CMBFiles have unit microK, ISWFiles have unit K, and cMatrixFile has units K**2
+    CMBFiles,ISWFiles,maskFile,cMatrixFile,iCMatFile,starMaskFile = tf.getFilenames(maskNum=maskNum)
+        #CMBFiles[0]: mask with anafast; CMBFiles[1]: no mask with anafast
+        #ISWFiles[0]: R010 r10%; ISWFiles[1]: R010 r02%;
+        #ISWFiles[2]: PSGplot060 r02%; ISWFiles[3]: R060 r02%;
+        #ISWFiles[4]: PSGplot100 r02%; ISWFiles[5]: R100 r02%;
     CMBnum = 1
     ISWnum = 1
     CMBmap = hp.read_map(CMBFiles[CMBnum],nest=nested) *1e-6 # convert microK to K
     ISWmap = hp.read_map(ISWFiles[ISWnum],nest=nested)
+    print 'loading mask from file ',maskFile
     mask = hp.read_map(maskFile,nest=nested)
     CMBvec = CMBmap[np.where(mask)]
     ISWvec = ISWmap[np.where(mask)]
     CMBvecSNR = snRotate(CMBvec)
     ISWvecSNR = snRotate(ISWvec)
 
-    SNfilter = getSNfilter(SNeigvals,SNmin)
+    SNfilter = getSNfilter(SNeigvals,SNmin) #return value is a mask for rotated data vectors
     sortedIndices = np.argsort(SNeigvals)
 
     # in rotated frame square of vector is variance

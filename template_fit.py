@@ -20,6 +20,8 @@
     Added nested as a passable parameter to 2 functions; ZK, 2016.01.09
     Broke getTestData apart into smaller pieces; ZK, 2016.01.20
     Modified ISW file names; ZK, 2016.01.21
+    Changed getFilenames, getTestData parameters to include maskNum; ZK, 2016.01.26
+    Added starMaskFiles to getFilenames; ZK, 2016.01.27
 
 """
 
@@ -118,54 +120,175 @@ def KSnorm(rvs,loc,sigma,nBins=10,showPDF=False,showCDF=False):
     plt.show()
   return KSresult
 
-def getFilenames(doHighPass=True, useBigMask=False):
+
+def getMapNames(doHighPass=True):
   """
   Purpose:
-      Load filenames into variables
-  Note:
-      CMBFiles have unit microK, ISWFiles have unit K, and cMatrixFile has units K**2 or microK**2
+
   Args:
       doHighPass: set this to use the highpass filtered CMB, ISW, cMatrix, and invCMat files
-      useBigMask: there are two mask sizes specified in this function.
-        Set this to use the large size, otherwise, the small one will be used.
   Returns:
-      CMBFiles,ISWFiles,maskFile,cMatrixFile,iCMatFile
+      CMBFiles, ISWFiles: each is a numpy array:
         CMBFiles[0]: mask with anafast; CMBFiles[1]: no mask with anafast
-        ISWFiles[0]: r10%; ISWFiles[1]: r02%; ISWRiles[2]: PSGplot r02%
+        ISWFiles[0]: R010 r10%; ISWFiles[1]: R010 r02%;
+        ISWFiles[2]: PSGplot060 r02%; ISWFiles[3]: R060 r02%;
+        ISWFiles[4]: PSGplot100 r02%; ISWFiles[5]: R100 r02%;
         CMBFiles have unit microK, ISWFiles have unit K, and cMatrixFile has units K**2
-
   """
   PSG = '/Data/PSG/'
+  PSGh = PSG+'hundred_point/'
   if doHighPass:
-    ISWFiles = np.array([PSG+'hundred_point/ISWmap_RING_r10_R010_hp12.fits',  #radius to 10% max (ring)
-                         PSG+'hundred_point/ISWmap_RING_R010_hp12.fits',      #radius to  2% max (ring)
-                         PSG+'hundred_point/ISWmap_RING_PSGplot_hp12.fits'])  # from PSG fig.1 overmass
+    ISWFiles = np.array([PSGh+'ISWmap_RING_r10_R010_hp12.fits',  #radius to 10% max (ring)
+                         PSGh+'ISWmap_RING_R010_hp12.fits',      #radius to  2% max (ring)
+                         PSGh+'ISWmap_RING_PSGplot060_hp12.fits',  # from PSG fig.1 overmass
+                         PSGh+'ISWmap_RING_R060_hp12.fits',      #radius to  2% max (ring)
+                         PSGh+'ISWmap_RING_PSGplot100_hp12.fits',  # from PSG fig.1 overmass
+                         PSGh+'ISWmap_RING_R100_hp12.fits',      #radius to  2% max (ring)
+
+                         PSGh+'ISWmap_RING_R010_hp12.fits',
+                         PSGh+'ISWmap_RING_R040_hp12.fits',
+                         PSGh+'ISWmap_RING_R060_hp12.fits',
+                         PSGh+'ISWmap_RING_R080_hp12.fits',
+                         PSGh+'ISWmap_RING_R100_hp12.fits',
+                         PSGh+'ISWmap_RING_R120_hp12.fits',
+                         PSGh+'ISWmap_RING_R160_hp12.fits'])
+
     CMBFiles = np.array([PSG+'planck_filtered.fits',             # used mask with anafast (ring)
                          PSG+'planck_filtered_nomask.fits'])     # no mask with anafast   (ring)
   else:
-    ISWFiles = np.array([PSG+'hundred_point/ISWmap_RING_r10_R010_nhp.fits',   #radius to 10% max (ring)
-                         PSG+'hundred_point/ISWmap_RING_R010_nhp.fits',       #radius to  2% max (ring)
-                         PSG+'hundred_point/ISWmap_RING_PSGplot_nhp.fits'])   # from PSG fig.1 overmass
+    ISWFiles = np.array([PSGh+'ISWmap_RING_r10_R010_nhp.fits',   #radius to 10% max (ring)
+                         PSGh+'ISWmap_RING_R010_nhp.fits',       #radius to  2% max (ring)
+                         PSGh+'ISWmap_RING_PSGplot060_nhp.fits',   # from PSG fig.1 overmass
+                         PSGh+'ISWmap_RING_R060_nhp.fits',       #radius to  2% max (ring)
+                         PSGh+'ISWmap_RING_PSGplot100_nhp.fits',   # from PSG fig.1 overmass
+                         PSGh+'ISWmap_RING_R100_nhp.fits',       #radius to  2% max (ring)
+
+                         PSGh+'ISWmap_RING_R010_nhp.fits',
+                         PSGh+'ISWmap_RING_R040_nhp.fits',
+                         PSGh+'ISWmap_RING_R060_nhp.fits',
+                         PSGh+'ISWmap_RING_R080_nhp.fits',
+                         PSGh+'ISWmap_RING_R100_nhp.fits',
+                         PSGh+'ISWmap_RING_R120_nhp.fits',
+                         PSGh+'ISWmap_RING_R160_nhp.fits'])
+
     CMBFiles = np.array([PSG+'planck_filtered_nhp.fits',         # used mask with anafast (ring)
                          PSG+'planck_filtered_nomask_nhp.fits']) # no mask with anafast   (ring)
+  return CMBFiles, ISWFiles
+
+
+def getMaskNames(doHighPass=True, maskNum=1, starMaskNum=0):
+  """
+  Purpose:
+
+  Args:
+      doHighPass: set this to use the highpass filtered CMB, ISW, cMatrix, and invCMat files
+      maskNum: set this to select which mask will be used. These should match the masks used
+        in SN_mode_filter.getFilenames:
+        1: the ~5 degree 6110 pixel mask (Default)
+        2: the ~10 degree 9875 pixel mask
+        3: the difference between the 9875 and 6100 pixel masks
+      starMaskNum: set this to the number of starmask to use
+        0: no starmask; full sky is available
+        1: starmask threshold at 50%
+        2: starmask threshold at 40%
+  Returns:
+      maskFile,cMatrixFile,iCMatFile,starMaskFile: each is a string containing a file name
+
+  """
   covDir = '/Data/covariance_matrices/'
-  if useBigMask:
-    maskFile = covDir+'ISWmask9875_RING.fits'
-    if doHighPass:
-      cMatrixFile = covDir+'covar9875_ISWout_bws_hp12_RING.npy'
-      iCMatFile = covDir+'invCovar9875_cho_hp12_RING.npy'
-    else:
-      cMatrixFile = covDir+'covar9875_ISWout_bws_nhp_RING.npy' #haven't made this yet
-      iCMatFile = covDir+'invCovar9875_cho_nhp_RING.npy'       #haven't made this yet
-  else:
+  if maskNum == 1:
     maskFile = covDir+'ISWmask6110_RING.fits'
-    if doHighPass:
-      cMatrixFile = covDir+'covar6110_ISWout_bws_hp12_RING.npy'
-      iCMatFile = covDir+'invCovar6110_cho_hp12_RING.npy'
+    if starMaskNum == 0:
+      starMaskFile = 'none'
+      if doHighPass:
+        cMatrixFile = covDir+'covar6110_ISWout_bws_hp12_RING.npy'
+        iCMatFile = covDir+'invCovar6110_cho_hp12_RING.npy'
+      else:
+        cMatrixFile = covDir+'covar6110_ISWout_bws_nhp_RING.npy' #haven't made this yet
+        iCMatFile = covDir+'invCovar6110_cho_nhp_RING.npy'       #haven't made this yet
+    elif starMaskNum == 1:
+      starMaskFile = '/Data/COM_Mask_hp12_t07.fits'
+      cMatrixFile = covDir+'covar6110_ISWout_sm1_RING.npy'
+      iCMatFile = covDir+'invCovar6110_cho_sm1_RING.npy'
+    elif starMaskNum == 2:
+      starMaskFile = '/Data/COM_Mask_hp12_t20.fits'
+      cMatrixFile = covDir+'covar6110_ISWout_sm2_RING.npy'
+      iCMatFile = covDir+'invCovar6110_cho_sm2_RING.npy'
     else:
-      cMatrixFile = covDir+'covar6110_ISWout_bws_nhp_RING.npy' #haven't made this yet
-      iCMatFile = covDir+'invCovar6110_cho_nhp_RING.npy'       #haven't made this yet
-  return CMBFiles,ISWFiles,maskFile,cMatrixFile,iCMatFile
+      print 'no such star mask'
+      return 0
+
+  elif maskNum == 2:
+    maskFile = covDir+'ISWmask9875_RING.fits'
+    if starMaskNum == 0:
+      starMaskFile = 'none'
+      if doHighPass:
+        cMatrixFile = covDir+'covar9875_ISWout_bws_hp12_RING.npy'
+        iCMatFile = covDir+'invCovar9875_cho_hp12_RING.npy'
+      else:
+        cMatrixFile = covDir+'covar9875_ISWout_bws_nhp_RING.npy' #haven't made this yet
+        iCMatFile = covDir+'invCovar9875_cho_nhp_RING.npy'       #haven't made this yet
+    elif starMaskNum == 1:
+      starMaskFile = '/Data/COM_Mask_hp12_t07.fits'
+      cMatrixFile = covDir+'covar9875_ISWout_sm1_RING.npy'
+      iCMatFile = covDir+'invCovar9875_cho_sm1_RING.npy'
+    elif starMaskNum == 2:
+      starMaskFile = '/Data/COM_Mask_hp12_t20.fits'
+      cMatrixFile = covDir+'covar9875_ISWout_sm2_RING.npy'
+      iCMatFile = covDir+'invCovar9875_cho_sm2_RING.npy'
+    else:
+      print 'no such star mask'
+      return 0
+
+  elif maskNum == 3:
+    maskFile = covDir+'ISWmask9875minus6110_RING.fits'
+    if starMaskNum == 0:
+      starMaskFile = 'none'
+      if doHighPass:
+        cMatrixFile = covDir+'covar9875minus6110_ISWout_bws_hp12_RING.npy'
+        iCMatFile = covDir+'invCovar9875minus6110_cho_hp12_RING.npy'
+      else:
+        cMatrixFile = covDir+'covar9875minus6110_ISWout_bws_nhp_RING.npy' #haven't made this yet
+        iCMatFile = covDir+'invCovar9875minus6110_cho_nhp_RING.npy'       #haven't made this yet
+    elif starMaskNum == 1:
+      starMaskFile = '/Data/COM_Mask_hp12_t07.fits'
+      cMatrixFile = covDir+'covar9875minus6110_ISWout_sm1_RING.npy'
+      iCMatFile = covDir+'invCovar9875minus6110_cho_sm1_RING.npy'
+    elif starMaskNum == 2:
+      starMaskFile = '/Data/COM_Mask_hp12_t20.fits'
+      cMatrixFile = covDir+'covar9875minus6110_ISWout_sm2_RING.npy'
+      iCMatFile = covDir+'invCovar9875minus6110_cho_sm2_RING.npy'
+    else:
+      print 'no such star mask'
+      return 0
+
+  else:
+    print 'no mask number',maskNum
+    return 0
+
+  return maskFile,cMatrixFile,iCMatFile,starMaskFile
+
+def getFilenames(doHighPass=True, maskNum=1, starMaskNum=0):
+  """
+  Purpose:
+      Load filenames into variables.
+  Note:
+      CMBFiles have unit microK, ISWFiles have unit K, and cMatrixFile has units K**2 or microK**2
+      This file wraps and combines getMapNames and getMaskNames
+  Args:
+      see getMapNames, getMaskNames
+  Returns:
+      CMBFiles,ISWFiles:
+        see getMapNames
+      maskFile,cMatrixFile,iCMatFile,starMaskFile:
+        see getMaskNames
+  """
+
+  CMBFiles, ISWFiles = getMapNames(doHighPass=doHighPass)
+  maskFile,cMatrixFile,iCmatFile,starMaskFile = getMaskNames(doHighPass=doHighPass,
+                                                             maskNum=maskNum,starMaskNum=starMaskNum)
+  return CMBFiles,ISWFiles,maskFile,cMatrixFile,iCMatFile,starMaskFile
+
 
 def getInverse(cMatrixFile,iCMatFile,type=3,newInverse=True,noSave=False):
   """
@@ -215,8 +338,8 @@ def getInverse(cMatrixFile,iCMatFile,type=3,newInverse=True,noSave=False):
   return cMatInv
 
 
-def getTestData(doHighPass=True, useBigMask=False, newInverse=False, matUnitMicro=False,
-                useInverse=True, nested=False):
+def getTestData(doHighPass=True, maskNum=1, newInverse=False, matUnitMicro=False,
+                useInverse=True, nested=False, starMaskNum=0):
   """
   Purpose:
       get the (covariance matrix or inverse covariance matrix), mask, ISW vectors, and model variances
@@ -224,13 +347,15 @@ def getTestData(doHighPass=True, useBigMask=False, newInverse=False, matUnitMicr
         (This last functionality doesn't really belong here and should be moved back to test function)
   Args:
       doHighPass: set this to use files that have been high pass filtered
-      useBigMask: set this to use the 9000 pixel mask. Otherwise, the 6000 pixel mask is used
+      maskNum: the number of the mask being used.  See getFilenames.
       newInverse: set this to create a new inverse if useInverse is also flagged
       matUnitMicro: set this if cMatrix or cMatInv has units of microKelvin**2.  Otherwise, K**2 is assumed.
       useInverse: set this to invert cMatrix.  Otherwise, left and right inverses are used via cInvT function.
         If used, inverse covariance matrix is returned.  Otherwise, covariance matrix is returned.
         Default: True.  please don't change to False.  The cInvT method is garbage.
       nested: the NESTED vs RING parameter to pass to healpy functions
+      starMaskNum: the number of the starmask to apply. See getFilenames.
+        Default: 0.  This means no star mask will be applied.
 
   Returns:
       matrix,mask,ISWvecs,modelVariances,ISWFiles,CMBFiles
@@ -243,7 +368,7 @@ def getTestData(doHighPass=True, useBigMask=False, newInverse=False, matUnitMicr
         CMBFiles: list of CMB files
   """
   # file names
-  CMBFiles,ISWFiles,maskFile,cMatrixFile,iCMatFile = getFilenames(doHighPass=doHighPass,useBigMask=useBigMask)
+  CMBFiles,ISWFiles,maskFile,cMatrixFile,iCMatFile,starMaskFiles = getFilenames(doHighPass=doHighPass,maskNum=maskNum)
 
   if useInverse:
     cMatInv = getInverse(cMatrixFile,iCMatFile,type=3,newInverse=newInverse,noSave=False)
@@ -252,8 +377,10 @@ def getTestData(doHighPass=True, useBigMask=False, newInverse=False, matUnitMicr
     cMatrix = mcm.symLoad(cMatrixFile)
     # 2015.12.11: new matrices may have units microK**2 or K**2. Older matrices are all in K**2
 
-  # load the mask
+  # load the masks
   mask = hp.read_map(maskFile,nest=nested)
+  #if starMaskNum != 0:
+  #  starMask = hp.read_map(starMaskFiles[starMaskNum],nest=nested)
 
   modelVariances = np.empty(ISWFiles.size) # to store the variance expected in model
   maskSize = np.sum(mask)
@@ -261,10 +388,14 @@ def getTestData(doHighPass=True, useBigMask=False, newInverse=False, matUnitMicr
   CMBvecs = np.zeros((CMBFiles.size,maskSize))
   for iIndex,ISWfile in enumerate(ISWFiles):
     ISW = hp.read_map(ISWfile,nest=nested)
+    #if starMaskNum != 0:
+    #  ISW *= starMask
     ISW = ISW[np.where(mask)]
     for cIndex,CMBfile in enumerate(CMBFiles):
       print 'starting with ',ISWfile,' and ',CMBfile
       CMB = hp.read_map(CMBfile,nest=nested)
+      #if starMaskNum != 0:
+      #  CMB *= starMask
       CMB = CMB[np.where(mask)]
 
       if useInverse:
@@ -277,7 +408,8 @@ def getTestData(doHighPass=True, useBigMask=False, newInverse=False, matUnitMicr
           amp,var = templateFit2(cMatrix,ISW*1e6,CMB) # ISW from K to microK
         else:
           amp,var = templateFit2(cMatrix,ISW,CMB*1e-6) # CMB from microK to K
-      print 'amplitude: ',amp,', variance: ',var
+      sigma = np.sqrt(var)
+      print 'amplitude: ',amp,' +- ',sigma,', (',amp/sigma,' sigma)'
       CMBvecs[cIndex] = CMB
     ISWvecs[iIndex] = ISW
     modelVariances[iIndex] = var # independant of CMB map
@@ -292,7 +424,7 @@ def getTestData(doHighPass=True, useBigMask=False, newInverse=False, matUnitMicr
 ################################################################################
 # testing code
 
-def test(useInverse=True, nested=False):
+def test(useInverse=True, nested=False, maskNum=1, starMaskNum=0):
   """
     Purpose: test the template fitting procedure
     Input:
@@ -300,19 +432,22 @@ def test(useInverse=True, nested=False):
         False to use vector inverses via cInvT
         Default: True. please don't change to False.  The cInvT method is garbage.
       nested: the NESTED vs RING parameter to pass to healpy functions
+      maskNum: number indicating the mask to use.  See getFilenames
+      starMaskNum: the number of the starmask to apply. See getFilenames.
+
     Returns: nothing
   """
 
   doHighPass   = True  # having this false lets more cosmic variance in
-  useBigMask   = False
   newInverse   = False
   matUnitMicro = False # option for matrices newer than 2015.12.11
 
   # this line gets the test data and does 4 template fits for files specified within
   print 'Starting template fitting on observed data... '
-  M,mask,ISWvecs,modelVariances,ISWFiles,CMBFiles = getTestData(doHighPass=doHighPass,useBigMask=useBigMask,
+  M,mask,ISWvecs,modelVariances,ISWFiles,CMBFiles = getTestData(doHighPass=doHighPass,maskNum=maskNum,
                                                                 newInverse=newInverse,matUnitMicro=matUnitMicro,
-                                                                useInverse=useInverse,nested=nested)
+                                                                useInverse=useInverse,nested=nested,
+                                                                starMaskNum=starMaskNum)
   if useInverse:
     cMatInv = M
   else:

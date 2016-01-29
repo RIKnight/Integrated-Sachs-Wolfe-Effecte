@@ -11,6 +11,7 @@
 
   MODIFICATION HISTORY:
     Written by Z Knight, 2016.01.20
+    Added starMaskFiles variable, but not using it yet; ZK, 2016.01.27
 
 """
 
@@ -106,7 +107,12 @@ def makeMatrices(nested=False, maskDir = '/Data/PSG/hundred_point/'):
 
 def test(nested=False,ISWnum=1,CMBnum=1):
     """
-    Note: not really a test function.
+    Purpose:
+        This function loads a list of mask files, each created with a different
+        size aperture around the GNS coordinates.  It then does a template
+        fit on the specified ISW and CMB files using each of these masks
+        and their associated inverse covariance matrices.  No mode filtering
+        has been done on the files specified and none is done in this program.
     Args:
         nested: the NESTED vs RING parameter for healpy functions
         ISWnum: selects which ISW file set
@@ -122,10 +128,11 @@ def test(nested=False,ISWnum=1,CMBnum=1):
     maskFiles = getMaskFiles(maskDir)
 
     # get CMBmap, ISWmap
-    CMBFiles,ISWFiles,maskFile,cMatrixFile,iCMatFile = tf.getFilenames()
-    # CMBFiles[0]: mask with anafast; CMBFiles[1]: no mask with anafast
-    # ISWFiles[0]: r10%; ISWFiles[1]: r02%; ISWRiles[2]: PSGplot r02%
-    # CMBFiles have unit microK, ISWFiles have unit K, and cMatrixFile has units K**2
+    CMBFiles,ISWFiles,maskFile,cMatrixFile,iCMatFile,starMaskFile = tf.getFilenames(doHighPass=True,maskNum=1)
+        #CMBFiles[0]: mask with anafast; CMBFiles[1]: no mask with anafast
+        #ISWFiles[0]: R010 r10%; ISWFiles[1]: R010 r02%;
+        #ISWFiles[2]: PSGplot060 r02%; ISWFiles[3]: R060 r02%;
+        #ISWFiles[4]: PSGplot100 r02%; ISWFiles[5]: R100 r02%;
     CMBmap = hp.read_map(CMBFiles[CNBnum],nest=nested) *1e-6 # convert microK to K
     ISWmap = hp.read_map(ISWFiles[ISWnum],nest=nested)
 
