@@ -28,6 +28,9 @@
       other programs; Added makeMasks and showMap; ZK, 2016.01.19
     Added showProfile; added doTangent flag and procedures;
       added outer point kludge to ISW profile; nside1024 filenaming; ZK, 2016.01.26
+    Removed map creation code from test function and dumped it into new
+      function getCVmap; Created zCent loop;
+      changed delta_z defalut to 0.3; ZK, 2016.01.29
 
 """
 
@@ -67,7 +70,7 @@ def makeISWProfile(MFile,zCent,profileFile,noSave=False,rmax=400,npoints=101):
       ISW: a corresponding array of DeltaT/T values (no units)
   """
   myCluster = ISW.ClusterVoid(MFile,zCent)
-  delta_z = 0.2
+  delta_z = 0.3 #0.2
   #impactDomain = np.logspace(-1,1,npoints)*rmax/10 # rmax/100 to rmax Mpc
   impactDomain = np.linspace(0,rmax,npoints)
   ISWRange = np.zeros(npoints)
@@ -251,12 +254,61 @@ def showProfile(profileFile):
   plt.title('ISW profile in file '+profileFile)
   plt.show()
 
+def getCVmap(nside,centralVec,maxAngle,latitudes,longitudes,impactDomain,ISWRange,
+             D_comov,nest=False,isVoid=False,doTangent=False):
+  """
+  Purpose:
+      Create an ISW map from an ISW profile and other information
+  Args:
+      nside:
+      centralVec:
+      maxAngle:
+      latitudes:
+      longitudes:
+      impactDomain:
+      ISWRange:
+      D_comov:
+      nest:
+      isVoid:
+      doTangent:
+
+  Returns:
+      myPixels: an array of indices that correspond to the indices in an intact
+        healpix map which are covered by this ISW map
+      mapISW: an array of ISW values with unit DeltaT/T (no units) that correspond
+        to the locations specified by the indices in the myPixels array
+  """
+  # create ISW signal interpolation function
+  ISWinterp = interp1d(impactDomain,ISWRange)
+
+  # find which pixels to work on
+  myPixels = hp.query_disc(nside,centralVec,maxAngle,nest=nest)
+  numPix = myPixels.size
+
+  # create data array only of pixels for this cluster/void
+  mapISW= np.zeros(numPix)
+  for pixNum in range(numPix):
+    myGb = latitudes[myPixels[pixNum]]
+    myGl = longitudes[myPixels[pixNum]]
+    myVec = glgb2vec(myGl,myGb) #returns unit vector
+    angSep = np.arccos(np.dot(centralVec,myVec))
+    if doTangent:
+      radSep = angSep*D_comov
+    else:
+      radSep = 2*D_comov*np.sin(angSep/2.)
+    if isVoid:
+      mapISW[pixNum] = ISWinterp(radSep)
+    else:
+      mapISW[pixNum] = ISWinterp(radSep)*-1
+      #clusters get the -1 rather than the voids due to sign error in PSG
+      # that ended up in clusterVoid.overtemp function
+  return myPixels, mapISW
 
 
 ################################################################################
 # testing code
 
-def test(nested=False,doPlot=True,nside=64,doTangent=False):
+def test(nested=False,doPlot=False,nside=64,doTangent=False):
   """
   Note that this is not a rigorous testing function
   Purpose:
@@ -296,125 +348,117 @@ def test(nested=False,doPlot=True,nside=64,doTangent=False):
   #overmassFiles = [file for file in overmassFiles if 'PSGplot060' in file]
   #overmassFiles = [file for file in overmassFiles if 'PSGplot100' in file]
   #overmassFiles = [file for file in overmassFiles if 'R010' in file]
+  #overmassFiles = [file for file in overmassFiles if 'R020' in file]
+  #overmassFiles = [file for file in overmassFiles if 'R030' in file]
   #overmassFiles = [file for file in overmassFiles if 'R040' in file]
-  #overmassFiles = [file for file in overmassFiles if 'R060' in file]
+  #overmassFiles = [file for file in overmassFiles if 'R050' in file]
+  overmassFiles = [file for file in overmassFiles if 'R060' in file]
+  #overmassFiles = [file for file in overmassFiles if 'R070' in file]
   #overmassFiles = [file for file in overmassFiles if 'R080' in file]
+  #overmassFiles = [file for file in overmassFiles if 'R090' in file]
   #overmassFiles = [file for file in overmassFiles if 'R100' in file]
+  #overmassFiles = [file for file in overmassFiles if 'R110' in file]
   #overmassFiles = [file for file in overmassFiles if 'R120' in file]
-  overmassFiles = [file for file in overmassFiles if 'R140' in file]
+  #overmassFiles = [file for file in overmassFiles if 'R130' in file]
+  #overmassFiles = [file for file in overmassFiles if 'R140' in file]
+  #overmassFiles = [file for file in overmassFiles if 'R150' in file]
   #overmassFiles = [file for file in overmassFiles if 'R160' in file]
   newProfile = True
-  newMap = True#False
+  newMap = False
 
 
   # create healpix maps
 
-  zCent = 0.52 # used by PSG for median of GNS catalog
-  D_comov = comovInterp(zCent)
-  print 'redshift: ',zCent,', comoving dist: ',D_comov,' Mpc'
+  zList = [0.4,0.45,0.5,0.55,0.6,0.65,0.7,0.75]
+  #zList = [0.52]
+  #zCent = 0.52 # used by PSG for median of GNS catalog
+  #D_comov = comovInterp(zCent)
+  #print 'redshift: ',zCent,', comoving dist: ',D_comov,' Mpc'
 
   rmax = 800 #Mpc, 2x PSGplot max
   #rmax = 1200 #Mpc, twice the rmax of overmass profiles
   npoints = 101
 
-  for omFile in overmassFiles:
-    # get ISW profile
-    ISWProfileFile = 'ISWprofile'+omFile[8:] # 'overmass' is at start of omFile and has 8 characters
-    if newProfile:
-      print 'reading file ',omFile
-      impactDomain,ISWRange = makeISWProfile(overmassDirectory+omFile,zCent,ISWDirectory+ISWProfileFile,rmax=rmax,npoints=npoints)
-    else:
-      print 'loading file ',ISWProfileFile
-      impactDomain,ISWRange = np.loadtxt(ISWDirectory+ISWProfileFile,unpack=True)
-    print 'impactDomain: ',impactDomain,' Mpc'
-    print 'ISWRange: ',ISWRange,' DeltaT/T'
+  # loop over zList to create maps at each redshift
+  for zCent in zList:
+    zStr = str(zCent)
+    print 'starting with z_cent = '+zStr
+    D_comov = comovInterp(zCent)
+    print 'redshift: ',zCent,', comoving dist: ',D_comov,' Mpc'
+    for omFile in overmassFiles:
+      # get ISW profile
+      ISWProfileFile = 'ISWprofile_z'+zStr+omFile[8:] # 'overmass' is at start of omFile and has 8 characters
+      if newProfile:
+        print 'reading file ',omFile
+        impactDomain,ISWRange = makeISWProfile(overmassDirectory+omFile,zCent,ISWDirectory+ISWProfileFile,rmax=rmax,npoints=npoints)
+      else:
+        print 'loading file ',ISWProfileFile
+        impactDomain,ISWRange = np.loadtxt(ISWDirectory+ISWProfileFile,unpack=True)
+      print 'impactDomain: ',impactDomain,' Mpc'
+      print 'ISWRange: ',ISWRange,' DeltaT/T'
 
-    if newMap:
-      # add point in outer region for kludgy extrapolation, just as in ISWprofile.clusterVoid.__init__
-      impactDomain = np.concatenate([impactDomain,[2*impactDomain[-1]]])
-      ISWRange = np.concatenate([ISWRange,[0]]) # ramps down to zero at r=2*impactDomain[-1]
+      if newMap:
+        # add point in outer region for kludgy extrapolation, just as in ISWprofile.clusterVoid.__init__
+        impactDomain = np.concatenate([impactDomain,[2*impactDomain[-1]]])
+        ISWRange = np.concatenate([ISWRange,[0]]) # ramps down to zero at r=2*impactDomain[-1]
 
-      # find cutoff radius at cutoff*100% of maximum amplitude
-      cutoff = 0.02
-      maxAmp = ISWRange[0]
-      impactLookup = interp1d(ISWRange,impactDomain)#,kind='cubic')
-      print 'maxAmp, cutoff, product: ',maxAmp,cutoff,maxAmp*cutoff
-      maxRadius = impactLookup(maxAmp*cutoff)
-      print 'max radius: ',maxRadius, ' Mpc'
-      #maxRadius = impactDomain[-1] #Mpc
+        # find cutoff radius at cutoff*100% of maximum amplitude
+        cutoff = 0.02
+        maxAmp = ISWRange[0]
+        impactLookup = interp1d(ISWRange,impactDomain)#,kind='cubic')
+        print 'maxAmp, cutoff, product: ',maxAmp,cutoff,maxAmp*cutoff
+        maxRadius = impactLookup(maxAmp*cutoff)
+        print 'max radius: ',maxRadius, ' Mpc'
 
-      # Perhaps PSG are using a max radius of 400 Mpc for everything.  Try this as well.
+        #doTangent = False
+        if doTangent: # for easier calculations, use maxRadius as arc length instead of tangential length
+          maxAngle = maxRadius/D_comov #radians
+        else: # use maxRadius as a chord length
+          maxAngle = 2*np.arcsin(maxRadius/(2*D_comov))
+        print 'radius for disc: ',maxAngle*180/np.pi, ' degrees'
 
-      #doTangent = False
-      if doTangent: # for easier calculations, use maxRadius as arc length instead of tangential length
-        maxAngle = maxRadius/D_comov #radians
-      else: # use maxRadius as a chord length
-        maxAngle = 2*np.arcsin(maxRadius/(2*D_comov))
-      print 'radius for disc: ',maxAngle*180/np.pi, ' degrees'
+        # visually check accuracy of interpolation function
+        if doPlot:
+          # create ISW signal interpolation function
+          ISWinterp = interp1d(impactDomain,ISWRange)
+          impactTest = np.linspace(0,maxRadius,100)
+          ISWTest = ISWinterp(impactTest)
 
-      # create ISW signal interpolation function
-      ISWinterp = interp1d(impactDomain,ISWRange)
+          plt.plot(impactDomain,ISWRange) # data points used to make interpolation
+          plt.plot(impactTest,ISWTest) # from interpolation function
+          plt.xlabel('r [Mpc]')
+          plt.ylabel('ISW: DeltaT / T')
+          plt.show()
 
-      impactTest = np.linspace(0,maxRadius,100)
-      ISWTest = ISWinterp(impactTest)
 
-      if doPlot:
-        plt.plot(impactDomain,ISWRange) # data points used to make interpolation
-        plt.plot(impactTest,ISWTest) # from interpolation function
-        plt.xlabel('r [Mpc]')
-        plt.ylabel('ISW: DeltaT / T')
-        plt.show()
+        numCV = 50
+        #numCV = 2
+        mapArray = np.zeros(hp.nside2npix(nside))
+        mask     = np.zeros(hp.nside2npix(nside))
+        cCentralVec = glgb2vec(cgl,cgb) #returns array of unit vectors
+        vCentralVec = glgb2vec(vgl,vgb) #returns array of unit vectors
+        for cvNum in range(numCV):
+          print 'starting cv number ',cvNum+1
+          cIndices,cISW = getCVmap(nside,cCentralVec[cvNum],maxAngle,latitudes,longitudes,impactDomain,ISWRange,
+                                   D_comov,nest=nested,isVoid=False,doTangent=doTangent)
+          mapArray[cIndices] += cISW
+          mask[cIndices] = 1
+          vIndices,vISW = getCVmap(nside,vCentralVec[cvNum],maxAngle,latitudes,longitudes,impactDomain,ISWRange,
+                                   D_comov,nest=nested,isVoid=True,doTangent=doTangent)
+          mapArray[vIndices] += vISW
+          mask[vIndices] = 1
 
-      numCV = 50
-      #numCV = 2
-      mapArray = np.zeros(hp.nside2npix(nside))
-      mask     = np.zeros(hp.nside2npix(nside))
-      cCentralVec = glgb2vec(cgl,cgb) #returns array of unit vectors
-      vCentralVec = glgb2vec(vgl,vgb) #returns array of unit vectors
-      for cvNum in range(numCV):
-        print 'starting cv number ',cvNum+1
-
-        # cluster
-        myPixels = hp.query_disc(nside,cCentralVec[cvNum],maxAngle,nest=nested)
-        numPix = myPixels.size
-        for pixNum in range(numPix):
-          myGb = latitudes[myPixels[pixNum]]
-          myGl = longitudes[myPixels[pixNum]]
-          myVec = glgb2vec(myGl,myGb) #returns unit vector
-          angSep = np.arccos(np.dot(cCentralVec[cvNum],myVec))
-          if doTangent:
-            radSep = angSep*D_comov
-          else:
-            radSep = 2*D_comov*np.sin(angSep/2.)
-          mapArray[myPixels[pixNum]] -= ISWinterp(radSep) # -for sign error in PSG
-          mask[    myPixels[pixNum]] = 1
-
-        # void
-        myPixels = hp.query_disc(nside,vCentralVec[cvNum],maxAngle,nest=nested)
-        numPix = myPixels.size
-        for pixNum in range(numPix):
-          myGb = latitudes[myPixels[pixNum]]
-          myGl = longitudes[myPixels[pixNum]]
-          myVec = glgb2vec(myGl,myGb) #returns unit vector
-          angSep = np.arccos(np.dot(vCentralVec[cvNum],myVec))
-          if doTangent:
-            radSep = angSep*D_comov
-          else:
-            radSep = 2*D_comov*np.sin(angSep/2.)
-          mapArray[myPixels[pixNum]] += ISWinterp(radSep) # +for sign error in PSG
-          mask[    myPixels[pixNum]] = 1
-
-      # 'overmass' is at start of omFile and has 8 characters; 'txt' is at end
-      if nside == 64:
-        ISWMap = 'ISWmap_RING'+omFile[8:-3]+'fits'
-        hp.write_map(ISWDirectory+ISWMap,mapArray*CMBtemp,nest=nested,coord='GALACTIC')
-        ISWMask = 'ISWmask_RING'+omFile[8:-3]+'fits'
-        hp.write_map(ISWDirectory+ISWMask,mask,nest=nested,coord='GALACTIC')
-      elif nside == 1024:
-        ISWMap = 'ISWmap_RING_1024'+omFile[8:-3]+'fits'
-        hp.write_map(ISWDirectory+ISWMap,mapArray*CMBtemp,nest=nested,coord='GALACTIC')
-        ISWMask = 'ISWmask_RING_1024'+omFile[8:-3]+'fits'
-        hp.write_map(ISWDirectory+ISWMask,mask,nest=nested,coord='GALACTIC')
+        # 'overmass' is at start of omFile and has 8 characters; 'txt' is at end
+        if nside == 64:
+          ISWMap = 'ISWmap_RING_z'+zStr+omFile[8:-3]+'fits'
+          hp.write_map(ISWDirectory+ISWMap,mapArray*CMBtemp,nest=nested,coord='GALACTIC')
+          ISWMask = 'ISWmask_RING_z'+zStr+omFile[8:-3]+'fits'
+          hp.write_map(ISWDirectory+ISWMask,mask,nest=nested,coord='GALACTIC')
+        elif nside == 1024:
+          ISWMap = 'ISWmap_RING_1024_z'+zStr+omFile[8:-3]+'fits'
+          hp.write_map(ISWDirectory+ISWMap,mapArray*CMBtemp,nest=nested,coord='GALACTIC')
+          ISWMask = 'ISWmask_RING_1024_z'+zStr+omFile[8:-3]+'fits'
+          hp.write_map(ISWDirectory+ISWMask,mask,nest=nested,coord='GALACTIC')
 
 
 
