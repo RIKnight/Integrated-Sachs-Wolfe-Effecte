@@ -22,6 +22,7 @@
     Modified ISW file names; ZK, 2016.01.21
     Changed getFilenames, getTestData parameters to include maskNum; ZK, 2016.01.26
     Added starMaskFiles to getFilenames; ZK, 2016.01.27
+    Updated map list to include all 16 base R sizes; ZK, 2016.01.31
 
 """
 
@@ -146,11 +147,20 @@ def getMapNames(doHighPass=True):
                          PSGh+'ISWmap_RING_R100_hp12.fits',      #radius to  2% max (ring)
 
                          PSGh+'ISWmap_RING_R010_hp12.fits',
+                         PSGh+'ISWmap_RING_R020_hp12.fits',
+                         PSGh+'ISWmap_RING_R030_hp12.fits',
                          PSGh+'ISWmap_RING_R040_hp12.fits',
+                         PSGh+'ISWmap_RING_R050_hp12.fits',
                          PSGh+'ISWmap_RING_R060_hp12.fits',
+                         PSGh+'ISWmap_RING_R070_hp12.fits',
                          PSGh+'ISWmap_RING_R080_hp12.fits',
+                         PSGh+'ISWmap_RING_R090_hp12.fits',
                          PSGh+'ISWmap_RING_R100_hp12.fits',
+                         PSGh+'ISWmap_RING_R110_hp12.fits',
                          PSGh+'ISWmap_RING_R120_hp12.fits',
+                         PSGh+'ISWmap_RING_R130_hp12.fits',
+                         PSGh+'ISWmap_RING_R140_hp12.fits',
+                         PSGh+'ISWmap_RING_R150_hp12.fits',
                          PSGh+'ISWmap_RING_R160_hp12.fits'])
 
     CMBFiles = np.array([PSG+'planck_filtered.fits',             # used mask with anafast (ring)
@@ -164,11 +174,20 @@ def getMapNames(doHighPass=True):
                          PSGh+'ISWmap_RING_R100_nhp.fits',       #radius to  2% max (ring)
 
                          PSGh+'ISWmap_RING_R010_nhp.fits',
+                         PSGh+'ISWmap_RING_R020_nhp.fits',
+                         PSGh+'ISWmap_RING_R030_nhp.fits',
                          PSGh+'ISWmap_RING_R040_nhp.fits',
+                         PSGh+'ISWmap_RING_R050_nhp.fits',
                          PSGh+'ISWmap_RING_R060_nhp.fits',
+                         PSGh+'ISWmap_RING_R070_nhp.fits',
                          PSGh+'ISWmap_RING_R080_nhp.fits',
+                         PSGh+'ISWmap_RING_R090_nhp.fits',
                          PSGh+'ISWmap_RING_R100_nhp.fits',
+                         PSGh+'ISWmap_RING_R110_nhp.fits',
                          PSGh+'ISWmap_RING_R120_nhp.fits',
+                         PSGh+'ISWmap_RING_R130_nhp.fits',
+                         PSGh+'ISWmap_RING_R140_nhp.fits',
+                         PSGh+'ISWmap_RING_R150_nhp.fits',
                          PSGh+'ISWmap_RING_R160_nhp.fits'])
 
     CMBFiles = np.array([PSG+'planck_filtered_nhp.fits',         # used mask with anafast (ring)
@@ -261,6 +280,47 @@ def getMaskNames(doHighPass=True, maskNum=1, starMaskNum=0):
     else:
       print 'no such star mask'
       return 0
+
+  elif maskNum == 11:
+    maskFile    = covDir+'ISWmask_voids_05.0deg_3612pix.fits'
+    cMatrixFile = covDir+'covar_voids_05.0deg_3612_ISWout.npy'
+    iCMatFile   = covDir+'invCovar_voids_05.0deg_3612_ISWout.npy'
+    starMaskFile = ''
+  elif maskNum == 12:
+    maskFile    = covDir+'ISWmask_clusters_05.0deg_3821pix.fits'
+    cMatrixFile = covDir+'covar_clusters_05.0deg_3821_ISWout.npy'
+    iCMatFile   = covDir+'invCovar_clusters_05.0deg_3821_ISWout.npy'
+    starMaskFile = ''
+  elif maskNum == 13:
+    maskFile    = covDir+'ISWmask_top25_05.0deg_3795pix.fits'
+    cMatrixFile = covDir+'covar_top25_05.0deg_3795_ISWout.npy'
+    iCMatFile   = covDir+'invCovar_top25_05.0deg_3795_ISWout.npy'
+    starMaskFile = ''
+  elif maskNum == 14:
+    maskFile    = covDir+'ISWmask_second25_05.0deg_3733pix.fits'
+    cMatrixFile = covDir+'covar_second25_05.0deg_3733_ISWout.npy'
+    iCMatFile   = covDir+'invCovar_second25_05.0deg_3733_ISWout.npy'
+    starMaskFile = ''
+  elif maskNum == 15:
+    maskFile    = covDir+'ISWmask_top12_05.0deg_2056pix.fits'
+    cMatrixFile = covDir+'covar_top12_05.0deg_2056_ISWout.npy'
+    iCMatFile   = covDir+'invCovar_top12_05.0deg_2056_ISWout.npy'
+    starMaskFile = ''
+  elif maskNum == 16:
+    maskFile    = covDir+'ISWmask_second12_05.0deg_2126pix.fits'
+    cMatrixFile = covDir+'covar_second12_05.0deg_2126_ISWout.npy'
+    iCMatFile   = covDir+'invCovar_second12_05.0deg_2126_ISWout.npy'
+    starMaskFile = ''
+  elif maskNum == 17:
+    maskFile    = covDir+'ISWmask_third12_05.0deg_2032pix.fits'
+    cMatrixFile = covDir+'covar_third12_05.0deg_2032_ISWout.npy'
+    iCMatFile   = covDir+'invCovar_third12_05.0deg_2032_ISWout.npy'
+    starMaskFile = ''
+  elif maskNum == 18:
+    maskFile    = covDir+'ISWmask_fourth12_05.0deg_2130pix.fits'
+    cMatrixFile = covDir+'covar_fourth12_05.0deg_2130_ISWout.npy'
+    iCMatFile   = covDir+'invCovar_fourth12_05.0deg_2130_ISWout.npy'
+    starMaskFile = ''
 
   else:
     print 'no mask number',maskNum

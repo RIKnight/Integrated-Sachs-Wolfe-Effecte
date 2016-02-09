@@ -422,7 +422,9 @@ class ClusterVoid:
     #print 'rph: ',rph,', self.rdomain[-1]: ',self.rdomain[-1]
     for index in range(rph.size):
       if rph[index] < self.rdomain[-1]:
-        phi[index] = phi_interp(rph[index])
+        phi[index] = phi_interp(rph[index])  ### 2016.01.31 getting error here about "below the interpolation range"
+                                             ### occurred with z_cent=0.6, delta_z=0.3, overmass_R010, point 1 of 101
+                                             ### worked fine for z_cent=0.4, 0.45, 0.5, 0.55
     return phi
 
   def dphi_deta(self,eta,impact):

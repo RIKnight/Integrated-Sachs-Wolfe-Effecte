@@ -51,7 +51,7 @@ def glgb2vec(gl,gb):
   """
   return hp.ang2vec((90-gb)*np.pi/180.,gl*np.pi/180.)
 
-def makeISWProfile(MFile,zCent,profileFile,noSave=False,rmax=400,npoints=101):
+def makeISWProfile(MFile,zCent,profileFile,noSave=False,rmax=400,npoints=101,delta_z=0.3):
   """
     use an overmass file to create an ISW profile
     innermost point is at r=0
@@ -65,12 +65,14 @@ def makeISWProfile(MFile,zCent,profileFile,noSave=False,rmax=400,npoints=101):
         default: 400
       npoints: number of points in profile
         default: 101
+      delta_z: the redshift difference from zCent for starting and stopping integration
+        default: 0.3
     returns:
       impact: an array of impact parameters [Mpc]
       ISW: a corresponding array of DeltaT/T values (no units)
   """
   myCluster = ISW.ClusterVoid(MFile,zCent)
-  delta_z = 0.3 #0.2
+  #delta_z = 0.3 #0.2
   #impactDomain = np.logspace(-1,1,npoints)*rmax/10 # rmax/100 to rmax Mpc
   impactDomain = np.linspace(0,rmax,npoints)
   ISWRange = np.zeros(npoints)
@@ -193,6 +195,7 @@ def makeMasks(nside=64,nested=False,ISWDir='/Data/PSG/hundred_point/'):
 
   # set radii for apertures around coordinate locations
   radiiDeg = np.array([4,4.5,5,5.5,6,6.5,7,7.5,8,8.5,9,9.5,10,10.5,11,11.5,12]) #degrees
+  #radiiDeg = np.array([5.0])
   radii = radiiDeg*np.pi/180. # converted to radians
 
   numCV = 50 # number of clusters and voids in catalog
@@ -201,7 +204,7 @@ def makeMasks(nside=64,nested=False,ISWDir='/Data/PSG/hundred_point/'):
       mask     = np.zeros(hp.nside2npix(nside))
       cCentralVec = glgb2vec(cgl,cgb) #returns array of unit vectors
       vCentralVec = glgb2vec(vgl,vgb) #returns array of unit vectors
-      for cvNum in range(numCV):
+      for cvNum in np.arange(numCV):
         #print 'starting (cluster,void) number ',cvNum+1
         # cluster
         myPixels = hp.query_disc(nside,cCentralVec[cvNum],radius,nest=nested)
@@ -263,8 +266,8 @@ def getCVmap(nside,centralVec,maxAngle,latitudes,longitudes,impactDomain,ISWRang
       nside:
       centralVec:
       maxAngle:
-      latitudes:
-      longitudes:
+      latitudes: array of latitudes of the Healpix pixels
+      longitudes: array of longitudes of the Healpix pixels
       impactDomain:
       ISWRange:
       D_comov:
@@ -352,7 +355,7 @@ def test(nested=False,doPlot=False,nside=64,doTangent=False):
   #overmassFiles = [file for file in overmassFiles if 'R030' in file]
   #overmassFiles = [file for file in overmassFiles if 'R040' in file]
   #overmassFiles = [file for file in overmassFiles if 'R050' in file]
-  overmassFiles = [file for file in overmassFiles if 'R060' in file]
+  #overmassFiles = [file for file in overmassFiles if 'R060' in file]
   #overmassFiles = [file for file in overmassFiles if 'R070' in file]
   #overmassFiles = [file for file in overmassFiles if 'R080' in file]
   #overmassFiles = [file for file in overmassFiles if 'R090' in file]
@@ -363,25 +366,23 @@ def test(nested=False,doPlot=False,nside=64,doTangent=False):
   #overmassFiles = [file for file in overmassFiles if 'R140' in file]
   #overmassFiles = [file for file in overmassFiles if 'R150' in file]
   #overmassFiles = [file for file in overmassFiles if 'R160' in file]
-  newProfile = True
-  newMap = False
+  newProfile = False#True
+  newMap = True#False
 
 
   # create healpix maps
 
-  zList = [0.4,0.45,0.5,0.55,0.6,0.65,0.7,0.75]
-  #zList = [0.52]
-  #zCent = 0.52 # used by PSG for median of GNS catalog
-  #D_comov = comovInterp(zCent)
-  #print 'redshift: ',zCent,', comoving dist: ',D_comov,' Mpc'
-
-  rmax = 800 #Mpc, 2x PSGplot max
-  #rmax = 1200 #Mpc, twice the rmax of overmass profiles
-  npoints = 101
+  #zList = [0.4,0.45,0.5,0.55,0.6,0.65,0.7,0.75]
+  zList = [0.52] # used by PSG for median of GNS catalog
+  rmax = 800     # Mpc, 2x PSGplot max
+  #rmax = 1200    # Mpc, twice the rmax of overmass profiles
+  npoints = 101  # number of points in the ISW profile
+  delta_z = 0.3  # for limits of integration when making ISW profile
+  cutoff = 0.02  # Maps extend to radius where amplitude = maxAmp*cutoff
 
   # loop over zList to create maps at each redshift
   for zCent in zList:
-    zStr = str(zCent)
+    zStr = str(zCent)  # this is sloppy formatting. eg: Want "0.40", not "0.4"
     print 'starting with z_cent = '+zStr
     D_comov = comovInterp(zCent)
     print 'redshift: ',zCent,', comoving dist: ',D_comov,' Mpc'
@@ -390,7 +391,8 @@ def test(nested=False,doPlot=False,nside=64,doTangent=False):
       ISWProfileFile = 'ISWprofile_z'+zStr+omFile[8:] # 'overmass' is at start of omFile and has 8 characters
       if newProfile:
         print 'reading file ',omFile
-        impactDomain,ISWRange = makeISWProfile(overmassDirectory+omFile,zCent,ISWDirectory+ISWProfileFile,rmax=rmax,npoints=npoints)
+        impactDomain,ISWRange = makeISWProfile(overmassDirectory+omFile,zCent,ISWDirectory+ISWProfileFile,
+                                               rmax=rmax,npoints=npoints,delta_z=delta_z)
       else:
         print 'loading file ',ISWProfileFile
         impactDomain,ISWRange = np.loadtxt(ISWDirectory+ISWProfileFile,unpack=True)
@@ -403,7 +405,6 @@ def test(nested=False,doPlot=False,nside=64,doTangent=False):
         ISWRange = np.concatenate([ISWRange,[0]]) # ramps down to zero at r=2*impactDomain[-1]
 
         # find cutoff radius at cutoff*100% of maximum amplitude
-        cutoff = 0.02
         maxAmp = ISWRange[0]
         impactLookup = interp1d(ISWRange,impactDomain)#,kind='cubic')
         print 'maxAmp, cutoff, product: ',maxAmp,cutoff,maxAmp*cutoff
@@ -420,7 +421,7 @@ def test(nested=False,doPlot=False,nside=64,doTangent=False):
         # visually check accuracy of interpolation function
         if doPlot:
           # create ISW signal interpolation function
-          ISWinterp = interp1d(impactDomain,ISWRange)
+          ISWinterp = interp1d(impactDomain,ISWRange) # same line as in getCVmap
           impactTest = np.linspace(0,maxRadius,100)
           ISWTest = ISWinterp(impactTest)
 
@@ -437,7 +438,7 @@ def test(nested=False,doPlot=False,nside=64,doTangent=False):
         mask     = np.zeros(hp.nside2npix(nside))
         cCentralVec = glgb2vec(cgl,cgb) #returns array of unit vectors
         vCentralVec = glgb2vec(vgl,vgb) #returns array of unit vectors
-        for cvNum in range(numCV):
+        for cvNum in np.arange(numCV):
           print 'starting cv number ',cvNum+1
           cIndices,cISW = getCVmap(nside,cCentralVec[cvNum],maxAngle,latitudes,longitudes,impactDomain,ISWRange,
                                    D_comov,nest=nested,isVoid=False,doTangent=doTangent)

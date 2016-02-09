@@ -12,6 +12,7 @@
     Written by Z Knight, 2016.01.12
     Completely revised; ZK, 2016.01.26
     Added starMaskFiles; ZK, 2016.01.27
+    Added more mask sets; ZK, 2016.02.03
 
 """
 
@@ -101,7 +102,46 @@ def templateFitSN(CMBmap,ISWmap,SNmin=1e-3,nested=False,maskNum=1,newRot=False):
     else:
         return amplitudes,variances
 
-def plotFits(ampSig,maskLabels,ISWlabels):
+def getLabels(setNumber):
+    """
+
+    Args:
+        setNumber: controls which set of masks to evaluate
+            1: for checking the effects of the size of the mask
+            2: for voids vs clusters
+            3: for first vs second 25
+            4: for quartiles
+
+    Returns:
+        maskNumSet,maskLabels,tfSN_savefile,testName
+    """
+    if setNumber == 1:
+        maskNumSet = np.array([      1,      2,      3])
+        maskLabels = np.array(['small','large','lg.-sm.'])
+        tfSN_savefile = 'tfSN_mask_size.npy'
+        testName = 'effect of mask size'
+    elif setNumber == 2:
+        maskNumSet = np.array([      1,     11,     12])
+        maskLabels = np.array(['cl+vo','voids','clusters'])
+        tfSN_savefile = 'tfSN_voids_clusters.npy'
+        testName = 'voids vs. clusters'
+    elif setNumber == 3:
+        maskNumSet = np.array([      1,     13,     14])
+        maskLabels = np.array(['50+50','top25+25','next25+25'])
+        tfSN_savefile = 'tfSN_halves.npy'
+        testName = 'top 25+25 vs. next 25+25'
+    elif setNumber == 4:
+        maskNumSet = np.array([      1,     15,     16,     17,     18])
+        maskLabels = np.array(['50+50','top12+12','2nd12+12','3rd12+12','4th12+12'])
+        tfSN_savefile = 'tfSN_quarters.npy'
+        testName = 'top 12+12 vs. 2nd, 3rd, 4th 12+12'
+    else:
+        print 'no such set of masks.'
+        return 0
+    return maskNumSet,maskLabels,tfSN_savefile,testName
+
+
+def plotFits(ampSig,maskLabels,ISWlabels,testName=''):
     """
     Purpose:
         plot the results of a set of template fits
@@ -111,23 +151,29 @@ def plotFits(ampSig,maskLabels,ISWlabels):
                 first index is mask number: eg. 0: m6110, 1: m9875, 2: mDelta
                 second index is ISW map number: eg. 10,40,...
         maskLabels:
-            numpy string array the same length as the first index of ampVar
+            numpy string array the same length as the first index of ampSig
         ISWlabels:
-            numpy integer array the same length as the second index of ampVar
+            numpy integer array the same length as the second index of ampSig
+        testName:
+            the name of the test to be used in plot title
     Returns:
 
     """
     plt.figure(1)
     plt.subplot(211)
     for maskNum in range(maskLabels.__len__()):
-        plt.semilogy(ISWlabels,ampSig[maskNum,:,0],marker='.') #amplitudes
+        plt.semilogy(ISWlabels,ampSig[maskNum,:,0],marker='.',
+                     label=maskLabels[maskNum]) #amplitudes
     plt.ylabel('amplitude of fit')
-    plt.title('S/N filtered template fit results: small (blue), large (green), diff (red)')
+    plt.title('S/N filtered template fit results: '+testName)
+    plt.legend()
     plt.subplot(212)
     for maskNum in range(maskLabels.__len__()):
-        plt.plot(ISWlabels,ampSig[maskNum,:,0]/ampSig[maskNum,:,1],marker='.') #amplitude/standard deviations
+        plt.plot(ISWlabels,ampSig[maskNum,:,0]/ampSig[maskNum,:,1],marker='.'
+                 ,label=maskLabels[maskNum]) #amplitude/standard deviations
     plt.ylabel('significance of fit')
     plt.xlabel('R [Mpc/h]')
+    #plt.legend()
     plt.show()
 
 
@@ -135,30 +181,40 @@ def plotFits(ampSig,maskLabels,ISWlabels):
 ################################################################################
 # testing code
 
-def test(SNmin=1e-3,nested=False):
+def test(SNmin=1e-3,nested=False,setNum=1,newRot=False):
+    """
+
+    Args:
+        SNmin:
+        nested:
+        setNum: controls which set of masks to evaluate
+            1: for checking the effects of the size of the mask
+            2: for voids vs clusters
+            3: for first vs second 25
+            4: for quartiles
+        newRot: set to False if rotation matrices have already been calculated
+            Default: False
+
+    Returns:
+
+    """
 
     # select which combinations will be evaluated
     CMBnum = 1 # for the non-masked anafast filtered map
     #ISWnumSet = np.array([2,3,4,5]) # Z vs PSG testing
-    ISWnumSet = np.array([ 6, 7, 8, 9, 10, 11, 12])
-    ISWlabels = np.array([10,40,60,80,100,120,160])
-    maskNumSet = np.array([      1,      2,      3])
-    maskLabels = np.array(['small','large','delta'])
+    ISWnumSet = np.linspace(1,16,16)+5
+    ISWlabels = np.linspace(1,16,16)*10
 
-    results = np.zeros((maskNumSet.size,ISWnumSet.size,2)) #2 for [amp,var]
+    maskNumSet,maskLabels,tfSN_savefile,testName = getLabels(setNum)
+
+
+    results = np.zeros((maskNumSet.size,ISWnumSet.size,2)) #2 for [amp,stddev]
 
     print 'Starting template fitting on observed data... '
-    # get CMBmap, ISWmap
-    #CMBFiles,ISWFiles,maskFile,cMatrixFile,iCMatFile,starMaskFile = tf.getFilenames(doHighPass=True, maskNum=maskNum)
+    # get filenames and CMB map
     CMBFiles,ISWFiles = tf.getMapNames(doHighPass=True)
-        #CMBFiles[0]: mask with anafast; CMBFiles[1]: no mask with anafast
-        #ISWFiles[0]: R010 r10%; ISWFiles[1]: R010 r02%;
-        #ISWFiles[2]: PSGplot060 r02%; ISWFiles[3]: R060 r02%;
-        #ISWFiles[4]: PSGplot100 r02%; ISWFiles[5]: R100 r02%;
     CMBmap = hp.read_map(CMBFiles[CMBnum],nest=nested) *1e-6 # convert microK to K
-    #ISWmap = hp.read_map(ISWFiles[ISWnum],nest=nested)
 
-    newRot=False # set to False if rotation matrices have already been calculated
     ISWmapSet = np.zeros((ISWnumSet.size,CMBmap.size)) #CMBmap has same size as ISW maps
     for maskIndex,maskNum in enumerate(maskNumSet):
         for ISWindex,ISWnum in enumerate(ISWnumSet):
@@ -174,12 +230,12 @@ def test(SNmin=1e-3,nested=False):
             sigma = results[maskIndex,ISWindex,1]
             print 'the amplitude of the fit: ',amp,' +- ',sigma,' (',amp/sigma,' sigma)'
 
-    np.save('tfSN_result.npy',results)
+    np.save(tfSN_savefile,results)
     print 'table of results: ([[[amp,stddev]]])'
     print results
     print 'done'
 
-    plotFits(results,maskLabels,ISWlabels)
+    plotFits(results,maskLabels,ISWlabels,testName=testName)
 
 if __name__=='__main__':
     test()

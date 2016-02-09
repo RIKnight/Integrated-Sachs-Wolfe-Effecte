@@ -22,6 +22,8 @@
     Added third mask to list in getFilenames:
         difference between 9875 and 6110 pixel masks;
         added same options to getRot, loadRot; ZK, 2016.01.26
+    Added masks 11-18 for clusters only, voids only, top 25, second 25,
+        top 12, second 12, third 12, fourth 12; ZK, 2016.02.03
 """
 
 import numpy as np
@@ -76,18 +78,10 @@ def getRot(signalCov,noiseCov,maskNum=0):
     """
     # should be the same filenames as in loadRot
     covDir = '/Data/covariance_matrices/'
-    if maskNum == 1:
-        eigValsFile = covDir+'SNeigvals1.npy'
-        eigVecsFile = covDir+'SNeigvecs1.npy'
-    elif maskNum == 2:
-        eigValsFile = covDir+'SNeigvals2.npy'
-        eigVecsFile = covDir+'SNeigvecs2.npy'
-    elif maskNum == 3:
-        eigValsFile = covDir+'SNeigvals3.npy'
-        eigVecsFile = covDir+'SNeigvecs3.npy'
-    #else:
-    #    print 'no such mask'
-    #    return 0
+
+    eigValsFile = covDir+'SNeigvals'+str(maskNum)+'.npy'
+    eigVecsFile = covDir+'SNeigvecs'+str(maskNum)+'.npy'
+
     startTime = time.time()
     noiseInvSqrt = invSqrt(noiseCov) #symmetric so no need to transpose in next line
     toRotate = np.dot(noiseInvSqrt,np.dot(signalCov,noiseInvSqrt))
@@ -115,16 +109,9 @@ def loadRot(maskNum):
     """
     # must be the same filenames as in getRot
     covDir = '/Data/covariance_matrices/'
-    if maskNum == 1:
-        eigValsFile = covDir+'SNeigvals1.npy'
-        eigVecsFile = covDir+'SNeigvecs1.npy'
-    elif maskNum == 2:
-        eigValsFile = covDir+'SNeigvals2.npy'
-        eigVecsFile = covDir+'SNeigvecs2.npy'
-    elif maskNum == 3:
-        eigValsFile = covDir+'SNeigvals3.npy'
-        eigVecsFile = covDir+'SNeigvecs3.npy'
-    else:
+    eigValsFile = covDir+'SNeigvals'+str(maskNum)+'.npy'
+    eigVecsFile = covDir+'SNeigvecs'+str(maskNum)+'.npy'
+    if maskNum == 0:
         print 'no such mask'
         return 0
     w = np.load(eigValsFile)
@@ -141,8 +128,17 @@ def getFilenames(maskNum):
             1: the ~5 degree 6110 pixel mask (Default)
             2: the ~10 degree 9875 pixel mask
             3: the difference between the 9875 and 6100 pixel masks
-    Returns:
 
+            11: 50 voids
+            12: 50 clusters
+            13: top 25+25
+            14: second 25+25
+            15: top 12+12
+            16: second 12+12
+            17: third 12+12
+            18: fourth 12+12
+    Returns:
+        maskFile,nMatrixFile,sMatrixFile,saveRotFile,saveRotInvFile
     """
     covDir = '/Data/covariance_matrices/'
     if maskNum == 1:
@@ -163,6 +159,56 @@ def getFilenames(maskNum):
         sMatrixFile    = covDir+'covar9875minus6110_ISWin_bws_hp12_RING.npy'
         saveRotFile    = covDir+'SNrot_9875minus6110.npy'
         saveRotInvFile = covDir+'SNrot_9875minus6110_inv.npy'
+
+    elif maskNum == 11:
+        maskFile       = covDir+'ISWmask_voids_05.0deg_3612pix.fits'
+        nMatrixFile    = covDir+'covar_voids_05.0deg_3612_ISWout.npy'
+        sMatrixFile    = covDir+'covar_voids_05.0deg_3612_ISWin.npy'
+        saveRotFile    = covDir+'SNrot_voids_05.0deg_3612.npy'
+        saveRotInvFile = covDir+'SNrot_voids_05.0deg_3612_inv.npy'
+    elif maskNum == 12:
+        maskFile       = covDir+'ISWmask_clusters_05.0deg_3821pix.fits'
+        nMatrixFile    = covDir+'covar_clusters_05.0deg_3821_ISWout.npy'
+        sMatrixFile    = covDir+'covar_clusters_05.0deg_3821_ISWin.npy'
+        saveRotFile    = covDir+'SNrot_clusters_05.0deg_3821.npy'
+        saveRotInvFile = covDir+'SNrot_clusters_05.0deg_3821_inv.npy'
+    elif maskNum == 13:
+        maskFile       = covDir+'ISWmask_top25_05.0deg_3795pix.fits'
+        nMatrixFile    = covDir+'covar_top25_05.0deg_3795_ISWout.npy'
+        sMatrixFile    = covDir+'covar_top25_05.0deg_3795_ISWin.npy'
+        saveRotFile    = covDir+'SNrot_top25_05.0deg_3795.npy'
+        saveRotInvFile = covDir+'SNrot_top25_05.0deg_3795_inv.npy'
+    elif maskNum == 14:
+        maskFile       = covDir+'ISWmask_second25_05.0deg_3733pix.fits'
+        nMatrixFile    = covDir+'covar_second25_05.0deg_3733_ISWout.npy'
+        sMatrixFile    = covDir+'covar_second25_05.0deg_3733_ISWin.npy'
+        saveRotFile    = covDir+'SNrot_second25_05.0deg_3733.npy'
+        saveRotInvFile = covDir+'SNrot_second25_05.0deg_3733_inv.npy'
+    elif maskNum == 15:
+        maskFile       = covDir+'ISWmask_top12_05.0deg_2056pix.fits'
+        nMatrixFile    = covDir+'covar_top12_05.0deg_2056_ISWout.npy'
+        sMatrixFile    = covDir+'covar_top12_05.0deg_2056_ISWin.npy'
+        saveRotFile    = covDir+'SNrot_top12_05.0deg_2056.npy'
+        saveRotInvFile = covDir+'SNrot_top12_05.0deg_2056_inv.npy'
+    elif maskNum == 16:
+        maskFile       = covDir+'ISWmask_second12_05.0deg_2126pix.fits'
+        nMatrixFile    = covDir+'covar_second12_05.0deg_2126_ISWout.npy'
+        sMatrixFile    = covDir+'covar_second12_05.0deg_2126_ISWin.npy'
+        saveRotFile    = covDir+'SNrot_second12_05.0deg_2126.npy'
+        saveRotInvFile = covDir+'SNrot_second12_05.0deg_2126_inv.npy'
+    elif maskNum == 17:
+        maskFile       = covDir+'ISWmask_third12_05.0deg_2032pix.fits'
+        nMatrixFile    = covDir+'covar_third12_05.0deg_2032_ISWout.npy'
+        sMatrixFile    = covDir+'covar_third12_05.0deg_2032_ISWin.npy'
+        saveRotFile    = covDir+'SNrot_third12_05.0deg_2032.npy'
+        saveRotInvFile = covDir+'SNrot_third12_05.0deg_2032_inv.npy'
+    elif maskNum == 18:
+        maskFile       = covDir+'ISWmask_fourth12_05.0deg_2130pix.fits'
+        nMatrixFile    = covDir+'covar_fourth12_05.0deg_2130_ISWout.npy'
+        sMatrixFile    = covDir+'covar_fourth12_05.0deg_2130_ISWin.npy'
+        saveRotFile    = covDir+'SNrot_fourth12_05.0deg_2130.npy'
+        saveRotInvFile = covDir+'SNrot_fourth12_05.0deg_2130_inv.npy'
+
     else:
         print 'no such mask'
         return 0
