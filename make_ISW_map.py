@@ -11,6 +11,12 @@
   USES:
     ISWprofile.py
     cosmography.py
+    Gr08_clustercat.txt
+    Gr08_voidcat.txt
+    pixel_coords_map_nested_galactic_res6.fits
+    pixel_coords_map_ring_galactic_res6.fits
+    pixel_coords_map_nested_galactic_res10.fits
+    pixel_coords_map_ring_galactic_res10.fits
 
   MODIFICATION HISTORY:
     Written by Z Knight, 2015.08.14
@@ -243,7 +249,8 @@ def showMap(mapFile,nested=False,return_projected_map=False,
   map = hp.read_map(mapFile,nest=nested)
   projected = hp.orthview(map,rot=[180,35],coord=['G','C'],half_sky=True,
                           nest=nested,flip='geo',title=title,
-                          return_projected_map=return_projected_map)
+                          return_projected_map=return_projected_map)#,
+                          #max=60,min=-60,unit='microK')
   hp.graticule(dpar=30,dmer=30)
   plt.show()
 
