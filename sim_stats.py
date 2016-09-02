@@ -18,6 +18,13 @@ Modification History:
   Fixed x,theta conversion error; ZK, 2016.07.01
   Added spice functionality; ZK, 2016.07.14
   Added legprodint, S_{1/2}; ZK, 2016.07.22
+  Upgraded the getSMICA map degradation procedure to use harmonic space
+    pixel window scaling; ZK, 2016.08.16
+  Added C_l ensemble average; ZK, 2016.08.26
+  Modified treatment of SPICE output to be C_l, not psuedo-C_l, which brought
+    SPICE C_l results in line with anafast psuedo-C_l results; ZK, 2016.08.31 
+  Added S_{1/2} histogram; ZK, 2016.08.31
+  Added subav="YES",subdipole="YES" to ispice calls; ZK, 2016.09.01 
 
 """
 
@@ -120,36 +127,70 @@ def getSMICA(theta_i=0.0,theta_f=180.0,nSteps=1800,lmax=100,newSMICA=False,useSP
     maskMap, maskHead  = hp.read_map(dataDir+maskFile, nest=True,h=True)
 
     # degrade map and mask resolutions from 2048 to 128; convert NESTED to RING
+    useAlm = True # set to True to do harmonic space scaling, False for ud_grade
+    NSIDE_big = 2048
     NSIDE_deg = 128
     while 4*NSIDE_deg < lmax:
       NSIDE_deg *=2
     print 'resampling maps at NSIDE = ',NSIDE_deg,'... '
     order_out = 'RING'
-    smicaMapDeg = hp.ud_grade(smicaMap,nside_out=NSIDE_deg,order_in='NESTED',order_out=order_out)
-    maskMapDeg  = hp.ud_grade(maskMap, nside_out=NSIDE_deg,order_in='NESTED',order_out=order_out)
+    if useAlm:
+      # transform to harmonic space
+      smicaMapRing = hp.reorder(smicaMap,n2r=True)
+      maskMapRing  = hp.reorder(maskMap,n2r=True)
+      smicaCl,smicaAlm = hp.anafast(smicaMapRing,alm=True,lmax=lmax)
+      maskCl, maskAlm  = hp.anafast(maskMapRing, alm=True,lmax=lmax)
+        # this gives 101 Cl values and 5151 Alm values.  Why not all 10201 Alm.s?
+
+      # scale by pixel window functions
+      bigWin = hp.pixwin(NSIDE_big)
+      degWin = hp.pixwin(NSIDE_deg)
+      winRatio = degWin/bigWin[:degWin.size]
+      degSmicaAlm = hp.almxfl(smicaAlm,winRatio)
+      degMaskAlm  = hp.almxfl(maskAlm, winRatio)
+      
+      # re-transform back to real space
+      smicaMapDeg = hp.alm2map(degSmicaAlm,NSIDE_deg)
+      maskMapDeg  = hp.alm2map(degMaskAlm, NSIDE_deg)
+
+    else:
+      smicaMapDeg = hp.ud_grade(smicaMap,nside_out=NSIDE_deg,order_in='NESTED',order_out=order_out)
+      maskMapDeg  = hp.ud_grade(maskMap, nside_out=NSIDE_deg,order_in='NESTED',order_out=order_out)
       # note: degraded resolution mask will no longer be only 0s and 1s.
-      #   Should it be?
+      #   Should it be?  Yes.
+
+    # turn smoothed mask back to 0s,1s mask
+    threshold = 0.9
+    maskMapDeg[np.where(maskMapDeg >  threshold)] = 1
+    maskMapDeg[np.where(maskMapDeg <= threshold)] = 0
+
+    #testing
+    #hp.mollview(smicaMapDeg)
+    #plt.show()
+    #hp.mollview(maskMapDeg)
+    #plt.show()
+    #return 0
+
+    # create fits files for SPICE
+    mapDegFile = 'smicaMapDeg.fits'
+    maskDegFile = 'maskMapDeg.fits'
+    hp.write_map(mapDegFile,smicaMapDeg,nest=False) # use False if order_out='RING' above
+    hp.write_map(maskDegFile,maskMapDeg,nest=False)
 
     # find power spectra
     print 'find power spectra... '
     if useSPICE:
-      # create necessary fits files
-      mapDegFile = 'smicaMapDeg.fits'
-      maskDegFile = 'maskMapDeg.fits'
-      hp.write_map(mapDegFile,smicaMapDeg,nest=False) # use False if order_out='RING' above
-      hp.write_map(maskDegFile,maskMapDeg,nest=False)
-
-      # use spice
       ClFile1 = 'spiceCl_unmasked.fits'
       ClFile2 = 'spiceCl_masked.fits'
-      ClFile3 = 'spiceCl_mask.fits'
-      ispice(mapDegFile,ClFile1)
+      #ClFile3 = 'spiceCl_mask.fits'
+
+      # note: lmax for spice is 3*NSIDE-1 or less
+      ispice(mapDegFile,ClFile1,subav="YES",subdipole="YES")
       Cl_unmasked = hp.read_cl(ClFile1)
-      #ispice(mapDegFile,ClFile2,maskfile1=maskDegFile)
-      ispice(mapDegFile,ClFile2,weightfile1=maskDegFile)
+      ispice(mapDegFile,ClFile2,maskfile1=maskDegFile,subav="YES",subdipole="YES")
       Cl_masked = hp.read_cl(ClFile2)
-      ispice(maskDegFile,ClFile2)
-      Cl_mask = hp.read_cl(ClFile2)
+      #ispice(maskDegFile,ClFile3,subav="YES",subdipole="YES")
+      #Cl_mask = hp.read_cl(ClFile3)
       ell = np.arange(Cl_unmasked.shape[0])
 
     else: # use anafast
@@ -164,23 +205,30 @@ def getSMICA(theta_i=0.0,theta_f=180.0,nSteps=1800,lmax=100,newSMICA=False,useSP
       gcp.showCl(ell,np.array([Cl_masked,Cl_unmasked]),
                  title='power spectra of unmasked, masked SMICA map')
 
-    # create legendre coefficients
-    legCoef_unmasked = (2*ell+1)/(4*np.pi) * Cl_unmasked
-    legCoef_masked   = (2*ell+1) * Cl_masked
-    legCoef_mask     = (2*ell+1) * Cl_mask
-  
     # Legendre transform to real space
     print 'Legendre transform to real space... '
-    thetaDomain     = np.linspace(theta_i,theta_f,nSteps+1)
-    xArray          = np.cos(thetaDomain*np.pi/180.)
-    CofTheta        = legval(xArray,legCoef_unmasked)*1e12 #K^2 to microK^2
-    CCutofTheta     = legval(xArray,legCoef_masked  )*1e12 #K^2 to microK^2
-    AofThetaInverse = legval(xArray,legCoef_mask    )
-    CCutofTheta = CCutofTheta/AofThetaInverse
+    thetaDomain       = np.linspace(theta_i,theta_f,nSteps+1)
+    xArray            = np.cos(thetaDomain*np.pi/180.)
+
+    legCoef_unmasked  = (2*ell+1)/(4*np.pi) * Cl_unmasked
+    CofTheta          = legval(xArray,legCoef_unmasked)*1e12 #K^2 to microK^2
+    legCoef_masked    = (2*ell+1) * Cl_masked
+    CCutofThetaTA     = legval(xArray,legCoef_masked  )*1e12 #K^2 to microK^2
+
+    if useSPICE:
+      CCutofTheta     = CCutofThetaTA/(4*np.pi)
+    else:
+      legCoef_mask    = (2*ell+1) * Cl_mask
+      AofThetaInverse = legval(xArray,legCoef_mask)
+      CCutofTheta     = CCutofThetaTA/AofThetaInverse
 
     # back to frequency space for S_{1/2} = CIC calculation
     legCoefs = legfit(xArray,CCutofTheta,lmax)
-    CCutofL = legCoefs*(4*np.pi)/(2*ell[:lmax+1]+1)
+    print 'lmax: ',lmax,', #coefs: ',legCoefs.size,', # ell: ',ell.size
+    CCutofL = legCoefs*(4*np.pi)/(2*ell[:lmax+1]+1) #crashed here when tried with lmax=400
+    #  message was: "ValueError: operands could not be broadcast together with shapes (401,) (384,)
+    #  this seems to be a limitation of SPICE, it's output doesn't go to high ell (lmax=383)
+    #  To get SPICE to higher l, need to increase NSIDE since lmax <= NSIDE*3-1
 
     # S_{1/2}
     myJmn = getJmn(lmax=lmax)[2:,2:] # do not include monopole, dipole
@@ -224,7 +272,7 @@ def SOneHalf(thetaArray, CArray, nTerms=250):
   """
   # Create C(cos(theta)) interpolation
   C = interp1d(np.cos(thetaArray*np.pi/180),CArray)
-  nTerms = 250
+  #nTerms = 250
   xArray = np.linspace(-1.0,0.5,nTerms+1) #use all but the first one
   dx = 1.5 / nTerms
   mySum = 0.0
@@ -333,15 +381,18 @@ def test(useCLASS=1,useLensing=0,classCamb=1,nSims=1000,lmax=100,newSMICA=False)
   print ''
 
   # Find S_{1/2} in real space to compare methods
-  SSnm2   = SOneHalf(thetaArray2,  C_SMICA)
-  SSmd2   = SOneHalf(thetaArray2,  C_SMICAmasked)
-  SSnm2sp = SOneHalf(thetaArray2sp,C_SMICAsp)
-  SSmd2sp = SOneHalf(thetaArray2sp,C_SMICAmaskedsp)
+  nTerms = 10000
+  SSnm2   = SOneHalf(thetaArray2,  C_SMICA,         nTerms=nTerms)
+  SSmd2   = SOneHalf(thetaArray2,  C_SMICAmasked,   nTerms=nTerms)
+  SSnm2sp = SOneHalf(thetaArray2sp,C_SMICAsp,       nTerms=nTerms)
+  SSmd2sp = SOneHalf(thetaArray2sp,C_SMICAmaskedsp, nTerms=nTerms)
 
 
   # create ensemble of realizations and gather statistics
-  covEnsemble  = np.zeros([nSims,nSteps+1]) # for maskless
-  covEnsemble2 = np.zeros([nSims,nSteps+1]) # for masked
+  covEnsembleFull  = np.zeros([nSims,nSteps+1]) # for maskless
+  covEnsembleCut   = np.zeros([nSims,nSteps+1]) # for masked
+  sEnsembleFull    = np.zeros(nSims)
+  sEnsembleCut     = np.zeros(nSims)
   covTheta = np.array([])
   #nSims = 1000
 
@@ -359,14 +410,19 @@ def test(useCLASS=1,useLensing=0,classCamb=1,nSims=1000,lmax=100,newSMICA=False)
   primCl  =  primCl[:WlMax]*(Wpix*Bsmica)**2
   lateCl  =  lateCl[:WlMax]*(Wpix*Bsmica)**2
   crossCl = crossCl[:WlMax]*(Wpix*Bsmica)**2
+  # note: i tried sims without this scaling, and results seemed the same at a glance
+
+  # collect simulated Cl for comparison to model
+  Clsim_full_sum = np.zeros(lmax+1)
+
+  # get Jmn matrix for harmonic space S_{1/2} calc.
+  myJmn = getJmn(lmax=lmax)[2:,2:] # do not include monopole, dipole
 
   doTime = True # to time the run and print output
   startTime = time.time()
   for nSim in range(nSims):
     print 'starting sim ',nSim+1, ' of ',nSims
     alm_prim,alm_late = hp.synalm((primCl,lateCl,crossCl),lmax=lmax,new=True)
-    #print 'alm_prim: ',alm_prim
-    #print 'alm l,m indices: ',hp.Alm.getlm(lmax+1)
 
     # calculate C(theta) of simulation
     Clsim_prim = hp.alm2cl(alm_prim)
@@ -374,29 +430,39 @@ def test(useCLASS=1,useLensing=0,classCamb=1,nSims=1000,lmax=100,newSMICA=False)
     Clsim_cros = hp.alm2cl(alm_prim,alm_late)
     Clsim_full = Clsim_prim + 2*Clsim_cros + Clsim_late
     # use Cl_sim_full to omit prim/late distinction for now
+    Clsim_full_sum += Clsim_full
 
     # first without mask  
     #   note: getCovar uses linspace in x for thetaArray
     thetaArray,cArray = getCovar(ell[:lmax+1],Clsim_full,theta_i=theta_i,theta_f=theta_f,
                                  nSteps=nSteps)
-    covEnsemble[nSim] = cArray
+    covEnsembleFull[nSim] = cArray
     covTheta = thetaArray
 
+    # S_{1/2}
+    sEnsembleFull[nSim] = np.dot(Clsim_full[2:],np.dot(myJmn,Clsim_full[2:]))
+
     # now with a mask
-    mapSim = hp.synfast(Clsim_full,myNSIDE,lmax=lmax) # should have default RING ordering
+    # pixel window and beam already accounted for in true Cls
+    #mapSim = hp.alm2map(alm_prim+alm_late,myNSIDE,lmax=lmax,pixwin=True,sigma=5./60*np.pi/180)
+    mapSim = hp.alm2map(alm_prim+alm_late,myNSIDE,lmax=lmax)
+    #mapSim = hp.synfast(Clsim_full,myNSIDE,lmax=lmax) # should have default RING ordering
     # super lame that spice needs to read/write from disk, but here goes...
     mapTempFile = 'tempMap.fits'
     ClTempFile  = 'tempCl.fits'
     maskDegFile = 'maskMapDeg.fits' # this should have been created by getSMICA
     hp.write_map(mapTempFile,mapSim)
-    ispice(mapTempFile,ClTempFile,weightfile1=maskDegFile)
+    ispice(mapTempFile,ClTempFile,maskfile1=maskDegFile,subav="YES",subdipole="YES")
     Cl_masked = hp.read_cl(ClTempFile)
     ell2 = np.arange(Cl_masked.shape[0])
     #   note: getCovar uses linspace in x for thetaArray
     thetaArray,cArray2 = getCovar(ell2[:lmax+1],Cl_masked[:lmax+1],theta_i=theta_i,
                                    theta_f=theta_f,nSteps=nSteps)
-    covEnsemble2[nSim] = cArray2
+    covEnsembleCut[nSim] = cArray2
     
+    # S_{1/2}
+    sEnsembleCut[nSim] = np.dot(Cl_masked[2:lmax+1],np.dot(myJmn,Cl_masked[2:lmax+1]))
+
     doPlot = False#True
     if doPlot:
       plt.plot(thetaArray,cArray)
@@ -407,20 +473,28 @@ def test(useCLASS=1,useLensing=0,classCamb=1,nSims=1000,lmax=100,newSMICA=False)
 
 
   if doTime: print 'time elapsed: ',int((time.time()-startTime)/60.),' minutes'
-  avgEnsemble = np.average(covEnsemble, axis = 0)
-  stdEnsemble = np.std(covEnsemble, axis = 0)
+  avgEnsembleFull = np.average(covEnsembleFull, axis = 0)
+  stdEnsembleFull = np.std(covEnsembleFull, axis = 0)
   # do I need a better way to describe confidence interval?
-  avgEnsemble2 = np.average(covEnsemble2, axis = 0)
-  stdEnsemble2 = np.std(covEnsemble2, axis = 0)
+  avgEnsembleCut = np.average(covEnsembleCut, axis = 0)
+  stdEnsembleCut = np.std(covEnsembleCut, axis = 0)
 
-
+  Clsim_full_avg = Clsim_full_sum / nSims
 
   doPlot = True
   if doPlot:
+    print 'plotting C_l... '
+    #print ell.size,conv.size,primCl.size,crossCl.size,lateCl.size
+    plt.plot(ell[:lmax+1],conv[:lmax+1]*(primCl+2*crossCl+lateCl)[:lmax+1],label='model D_l')
+    plt.plot(ell[:lmax+1],conv[:lmax+1]*Clsim_full_avg,label='ensemble average D_l')
+    plt.legend()
+    plt.show()
+
     print 'plotting correlation functions... '
     # first the whole sky statistics
-    plt.plot(thetaArray,avgEnsemble,label='sim. ensemble average (no mask)')
-    plt.fill_between(thetaArray,avgEnsemble+stdEnsemble,avgEnsemble-stdEnsemble,alpha=0.25,
+    plt.plot(thetaArray,avgEnsembleFull,label='sim. ensemble average (no mask)')
+    plt.fill_between(thetaArray,avgEnsembleFull+stdEnsembleFull,
+                     avgEnsembleFull-stdEnsembleFull,alpha=0.25,
                      label='simulation 1sigma envelope')
     plt.plot(thetaArray2,C_SMICA,label='SMICA R2 (inpainted,anafast)')
     plt.plot(thetaArray2sp,C_SMICAsp,label='SMICA R2 (inpainted,spice)')
@@ -435,8 +509,9 @@ def test(useCLASS=1,useLensing=0,classCamb=1,nSims=1000,lmax=100,newSMICA=False)
     plt.show()
 
     # now the cut sky
-    plt.plot(thetaArray,avgEnsemble2,label='sim. ensemble average (masked)')
-    plt.fill_between(thetaArray,avgEnsemble2+stdEnsemble2,avgEnsemble2-stdEnsemble2,alpha=0.25,
+    plt.plot(thetaArray,avgEnsembleCut,label='sim. ensemble average (masked)')
+    plt.fill_between(thetaArray,avgEnsembleCut+stdEnsembleCut,
+                     avgEnsembleCut-stdEnsembleCut,alpha=0.25,
                      label='simulation 1sigma envelope')
     plt.plot(thetaArray2,C_SMICAmasked,label='SMICA R2 (masked ,anafast)')
     plt.plot(thetaArray2sp,C_SMICAmaskedsp,label='SMICA R2 (masked ,spice)')
@@ -449,6 +524,21 @@ def test(useCLASS=1,useLensing=0,classCamb=1,nSims=1000,lmax=100,newSMICA=False)
     plt.legend()
     plt.show()
 
+    print 'plotting S_{1/2} distributions... '
+    myBins = np.logspace(2,7,100)
+    plt.axvline(x=S_SMICAnomasksp,color='b',linewidth=3,label='SMICA inpainted')
+    plt.axvline(x=S_SMICAmaskedsp,color='g',linewidth=3,label='SMICA masked')
+    plt.hist(sEnsembleFull,bins=myBins,histtype='step',label='full sky')
+    plt.hist(sEnsembleCut, bins=myBins,histtype='step',label='cut sky')
+
+    plt.gca().set_xscale("log")
+    plt.legend()
+    plt.xlabel('S_{1/2} (microK^4)')
+    plt.ylabel('Counts')
+    plt.title('S_{1/2} of '+str(nSims)+' simulated CMBs')
+    plt.show()
+
+
   # S_{1/2} output
   print ''
   print 'using CIC method: '
@@ -460,7 +550,8 @@ def test(useCLASS=1,useLensing=0,classCamb=1,nSims=1000,lmax=100,newSMICA=False)
   print 'S_{1/2}(spice): SMICA, no mask: ',SSnm2sp,', masked: ',SSmd2sp
   print ''
 
-  
+  #print 'S ensemble full: ',sEnsembleFull  
+  #print 'S ensemble cut:  ',sEnsembleCut  
 
 
 

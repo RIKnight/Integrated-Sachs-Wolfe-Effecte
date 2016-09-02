@@ -16,9 +16,12 @@ Outputs:
 Modification History:
   Written by Z Knight, 2016.07.22
   Added S_{1/2} mod; ZK, 2016.07.24
+  Added testing comparing against integration method; ZK, 2016.08.26
+  Fixed serious misuse of "break" statement; ZK, 2016.08.26
 
 """
 import numpy as np
+from numpy.polynomial.legendre import legval # used for testing
 
 def legendreSeries(x,lmax=101):
   """
@@ -71,16 +74,18 @@ def getImn(makeNew=True,endX=0.5,lmax=100,fileName='legProdInt.npy'):
     # fill in array
     for n in range(lmax+1):
       for m in range(lmax+2): # final index for final Imn[n+1,n-1]
-        if m==0 and n==0 or m==1 and n==1:
-          break
+        #print m,n
+        #if m==0 and n==0 or m==1 and n==1:
+          #break
         if m==n: # eq.n A8
-          Imn[m,n] = ( (Pl[n+1]-Pl[n-1])*(Pl[n]-Pl[n-2])
-                      - (2*n-1)*Imn[n+1,n-1] + (2*n+1)*Imn[n,n-2]
-                      + (2*n-1)*Imn[n-1,n-1] ) / (2*n+1)
+          if m!=0 and m!=1:
+            Imn[m,n] = ( (Pl[n+1]-Pl[n-1])*(Pl[n]-Pl[n-2])
+                        - (2*n-1)*Imn[n+1,n-1] + (2*n+1)*Imn[n,n-2]
+                        + (2*n-1)*Imn[n-1,n-1] ) / (2*n+1)
         else:    # eq.n A6
-          Imn[m,n] = ( m*Pl[n]*(Pl[m-1]-endX*Pl[m]) 
-                      - n*Pl[m]*(Pl[n-1]-endX*Pl[n]) ) \
-                      / (n*(n+1)-m*(m+1))
+            Imn[m,n] = ( m*Pl[n]*(Pl[m-1]-endX*Pl[m]) 
+                        - n*Pl[m]*(Pl[n-1]-endX*Pl[n]) ) \
+                        / (n*(n+1)-m*(m+1))
     np.save(fileName,Imn)
   else: #load from file
     Imn = np.load(fileName)
@@ -105,11 +110,41 @@ def test(useCLASS=1,useLensing=0,classCamb=1,nSims=1000,lmax=100):
     code for testing the other functions in this module
 
   """
+  lmax = 5
+  myX = 0.5
+  myPl = legendreSeries(myX,lmax=lmax)
+  print 'myPl: ',myPl
+
+  newPl = np.zeros(lmax+1)
+  for ell in range(lmax+1):
+    c = np.zeros(lmax+1)
+    c[ell] = 1
+    newPl[ell] = legval(myX,c)
+  print 'newPl: ',newPl
+
+
+  lmax = 5
   # test getImn
-  myImn = getImn(makeNew=True,lmax=100)
+  myImn = getImn(makeNew=True,lmax=lmax)
   print 'myImn: ',myImn
 
-
+  # compare result against integration method
+  newImn = np.zeros([lmax+1,lmax+1])
+  nTerms = 10000
+  dx = 1.5 / nTerms
+  for m in range(lmax+1):
+    for n in range(lmax+1):
+      if m>n: #use symmetry
+        newImn[m,n] = newImn[n,m]
+      else:
+        for term in range(nTerms):
+          xVal = -1 + dx*(term+0.5) # evaluating at center of each bin
+          c = np.zeros([2,lmax+1])
+          c[0,m] = 1
+          c[1,n] = 1
+          newImn[m,n] += legval(xVal,c[0])*legval(xVal,c[1])*dx
+  print 'newImn: ',newImn
+  print 'newImn-myImn: ',newImn-myImn
 
 if __name__=='__main__':
   test()
