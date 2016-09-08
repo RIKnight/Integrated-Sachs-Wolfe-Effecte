@@ -94,10 +94,11 @@ def loadCls(useCLASS=1,useLensing=0,classCamb=1,doPlot=False):
         CAMB Cl has ISWin/out split: ISWin: 0.4<z<0.75, ISWout: the rest
         Note: CAMB results include primary in ISWin and ISWout (not as intended)
         default: 1
-    useLensing: set to 1 to use lensed maps, 0 for non-lensed
+    useLensing: set to 1 to use lensed Cl, 0 for non-lensed
         default: 0
     classCamb: if 1: use the CAMB format of CLASS output, if 0: use CLASS format
         Note: parameter not used if useCLASS = 0
+        Also: the CLASS format option is not yet fully implemented
         default: 1
     doPlot: set to 1 to make plots
         default: False

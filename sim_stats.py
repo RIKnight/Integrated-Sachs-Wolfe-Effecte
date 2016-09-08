@@ -25,6 +25,9 @@ Modification History:
     SPICE C_l results in line with anafast psuedo-C_l results; ZK, 2016.08.31 
   Added S_{1/2} histogram; ZK, 2016.08.31
   Added subav="YES",subdipole="YES" to ispice calls; ZK, 2016.09.01 
+  Fixed indexing problem for Cl in hp.synalm; ZK, 2016.09.07
+  Added lmin to CIC calculations; ZK, 2016.09.07
+  Added lmin to C(theta) plotting; ZK, 2016.09.08
 
 """
 
@@ -44,7 +47,7 @@ from legprodint import getJmn
 from scipy.interpolate import interp1d
 
 
-def getCovar(ell,Cl,theta_i=0.0,theta_f=180.0,nSteps = 1800,doTime=False):
+def getCovar(ell,Cl,theta_i=0.0,theta_f=180.0,nSteps = 1800,doTime=False,lmin=0):
   """
   Purpose:
     create real space covariance array from harmonic space covariance
@@ -61,6 +64,8 @@ def getCovar(ell,Cl,theta_i=0.0,theta_f=180.0,nSteps = 1800,doTime=False):
       Default: 1800 (1801 values returned)
     doTime: set to True to output time elapsed
       Default: False
+    lmin: the minimum l value to include in conversion
+      Default: 0
   Outputs:
     theta, the theta values for C(theta) array
     C(theta), the covariance array
@@ -72,6 +77,8 @@ def getCovar(ell,Cl,theta_i=0.0,theta_f=180.0,nSteps = 1800,doTime=False):
   startEll = ell[0]
   ell = np.append(np.arange(startEll),ell)
   Cl  = np.append(np.zeros(startEll),Cl)
+  for zilch in range(lmin):
+    Cl[zilch] = 0
 
   # create legendre coefficients
   legCoef = (2*ell+1)/(4*np.pi) * Cl
@@ -89,7 +96,8 @@ def getCovar(ell,Cl,theta_i=0.0,theta_f=180.0,nSteps = 1800,doTime=False):
   return np.arccos(xArray)*180./np.pi,covar
 
 
-def getSMICA(theta_i=0.0,theta_f=180.0,nSteps=1800,lmax=100,newSMICA=False,useSPICE=False):
+def getSMICA(theta_i=0.0,theta_f=180.0,nSteps=1800,lmax=100,lmin=2,
+             newSMICA=False,useSPICE=False,newDeg=False):
   """
   Purpose:
     load CMB and mask maps from files, return correlation function for
@@ -102,10 +110,14 @@ def getSMICA(theta_i=0.0,theta_f=180.0,nSteps=1800,lmax=100,newSMICA=False,useSP
     theta_i,theta_f: starting and ending points for C(theta) in degrees
     nSteps: number of intervals between i,f points
     lmax: the maximum l value to include in legendre series for C(theta)
+    lmin: the lowest l to use in C(theta,Cl) and S_{1/2} = CIC calculation
     newSMICA: set to True to reload data from files and recompute
       if False, will load C(theta) curves from file
     useSPICE: if True, will use SPICE to find power spectra
       if False, will use anafast, following Copi et. al. 2013
+      Default: False
+    newDeg: set to True to recalculate map and mask degredations
+      Note: the saved files are dependent on the value of lmax that was used
       Default: False
   Outupts:
     theta: nSteps+1 angles that C(theta) arrays are for (degrees)
@@ -116,82 +128,86 @@ def getSMICA(theta_i=0.0,theta_f=180.0,nSteps=1800,lmax=100,newSMICA=False,useSP
   saveFile  = 'getSMICAfile.npy'  #for anafast
   saveFile2 = 'getSMICAfile2.npy' #for spice
   if newSMICA:
-
-    # load maps; default files have 2048,NESTED,GALACTIC
-    dataDir   = '/Data/'
-    smicaFile = 'COM_CMB_IQU-smica-field-int_2048_R2.01_full.fits'
-    maskFile  = 'COM_CMB_IQU-common-field-MaskInt_2048_R2.01.fits'
-    print 'opening file ',smicaFile,'... '
-    smicaMap,smicaHead = hp.read_map(dataDir+smicaFile,nest=True,h=True)
-    print 'opening file ',maskFile,'... '
-    maskMap, maskHead  = hp.read_map(dataDir+maskFile, nest=True,h=True)
-
-    # degrade map and mask resolutions from 2048 to 128; convert NESTED to RING
-    useAlm = True # set to True to do harmonic space scaling, False for ud_grade
-    NSIDE_big = 2048
-    NSIDE_deg = 128
-    while 4*NSIDE_deg < lmax:
-      NSIDE_deg *=2
-    print 'resampling maps at NSIDE = ',NSIDE_deg,'... '
-    order_out = 'RING'
-    if useAlm:
-      # transform to harmonic space
-      smicaMapRing = hp.reorder(smicaMap,n2r=True)
-      maskMapRing  = hp.reorder(maskMap,n2r=True)
-      smicaCl,smicaAlm = hp.anafast(smicaMapRing,alm=True,lmax=lmax)
-      maskCl, maskAlm  = hp.anafast(maskMapRing, alm=True,lmax=lmax)
-        # this gives 101 Cl values and 5151 Alm values.  Why not all 10201 Alm.s?
-
-      # scale by pixel window functions
-      bigWin = hp.pixwin(NSIDE_big)
-      degWin = hp.pixwin(NSIDE_deg)
-      winRatio = degWin/bigWin[:degWin.size]
-      degSmicaAlm = hp.almxfl(smicaAlm,winRatio)
-      degMaskAlm  = hp.almxfl(maskAlm, winRatio)
-      
-      # re-transform back to real space
-      smicaMapDeg = hp.alm2map(degSmicaAlm,NSIDE_deg)
-      maskMapDeg  = hp.alm2map(degMaskAlm, NSIDE_deg)
-
-    else:
-      smicaMapDeg = hp.ud_grade(smicaMap,nside_out=NSIDE_deg,order_in='NESTED',order_out=order_out)
-      maskMapDeg  = hp.ud_grade(maskMap, nside_out=NSIDE_deg,order_in='NESTED',order_out=order_out)
-      # note: degraded resolution mask will no longer be only 0s and 1s.
-      #   Should it be?  Yes.
-
-    # turn smoothed mask back to 0s,1s mask
-    threshold = 0.9
-    maskMapDeg[np.where(maskMapDeg >  threshold)] = 1
-    maskMapDeg[np.where(maskMapDeg <= threshold)] = 0
-
-    #testing
-    #hp.mollview(smicaMapDeg)
-    #plt.show()
-    #hp.mollview(maskMapDeg)
-    #plt.show()
-    #return 0
-
-    # create fits files for SPICE
+    # start with map degredations
     mapDegFile = 'smicaMapDeg.fits'
     maskDegFile = 'maskMapDeg.fits'
-    hp.write_map(mapDegFile,smicaMapDeg,nest=False) # use False if order_out='RING' above
-    hp.write_map(maskDegFile,maskMapDeg,nest=False)
+    if newDeg:
+      # load maps; default files have 2048,NESTED,GALACTIC
+      dataDir   = '/Data/'
+      smicaFile = 'COM_CMB_IQU-smica-field-int_2048_R2.01_full.fits'
+      maskFile  = 'COM_CMB_IQU-common-field-MaskInt_2048_R2.01.fits'
+      print 'opening file ',smicaFile,'... '
+      smicaMap,smicaHead = hp.read_map(dataDir+smicaFile,nest=True,h=True)
+      print 'opening file ',maskFile,'... '
+      maskMap, maskHead  = hp.read_map(dataDir+maskFile, nest=True,h=True)
+
+      # degrade map and mask resolutions from 2048 to 128; convert NESTED to RING
+      useAlm = True # set to True to do harmonic space scaling, False for ud_grade
+      NSIDE_big = 2048
+      NSIDE_deg = 128
+      while 4*NSIDE_deg < lmax:
+        NSIDE_deg *=2
+      print 'resampling maps at NSIDE = ',NSIDE_deg,'... '
+      order_out = 'RING'
+      if useAlm:
+        # transform to harmonic space
+        smicaMapRing = hp.reorder(smicaMap,n2r=True)
+        maskMapRing  = hp.reorder(maskMap,n2r=True)
+        smicaCl,smicaAlm = hp.anafast(smicaMapRing,alm=True,lmax=lmax)
+        maskCl, maskAlm  = hp.anafast(maskMapRing, alm=True,lmax=lmax)
+          # this gives 101 Cl values and 5151 Alm values.  Why not all 10201 Alm.s?
+
+        # scale by pixel window functions
+        bigWin = hp.pixwin(NSIDE_big)
+        degWin = hp.pixwin(NSIDE_deg)
+        winRatio = degWin/bigWin[:degWin.size]
+        degSmicaAlm = hp.almxfl(smicaAlm,winRatio)
+        degMaskAlm  = hp.almxfl(maskAlm, winRatio)
+        
+        # re-transform back to real space
+        smicaMapDeg = hp.alm2map(degSmicaAlm,NSIDE_deg)
+        maskMapDeg  = hp.alm2map(degMaskAlm, NSIDE_deg)
+
+      else:
+        smicaMapDeg = hp.ud_grade(smicaMap,nside_out=NSIDE_deg,order_in='NESTED',order_out=order_out)
+        maskMapDeg  = hp.ud_grade(maskMap, nside_out=NSIDE_deg,order_in='NESTED',order_out=order_out)
+        # note: degraded resolution mask will no longer be only 0s and 1s.
+        #   Should it be?  Yes.
+
+      # turn smoothed mask back to 0s,1s mask
+      threshold = 0.9
+      maskMapDeg[np.where(maskMapDeg >  threshold)] = 1
+      maskMapDeg[np.where(maskMapDeg <= threshold)] = 0
+
+      #testing
+      #hp.mollview(smicaMapDeg)
+      #plt.show()
+      #hp.mollview(maskMapDeg)
+      #plt.show()
+      #return 0
+
+      hp.write_map(mapDegFile,smicaMapDeg,nest=False) # use False if order_out='RING' above
+      hp.write_map(maskDegFile,maskMapDeg,nest=False)
+
+    else: # just load previous degradations (dependent on previous lmax)
+      print 'loading previously degraded map and mask...'
+      smicaMapDeg = hp.read_map( mapDegFile,nest=False)
+      maskMapDeg  = hp.read_map(maskDegFile,nest=False)
+
 
     # find power spectra
     print 'find power spectra... '
     if useSPICE:
       ClFile1 = 'spiceCl_unmasked.fits'
       ClFile2 = 'spiceCl_masked.fits'
-      #ClFile3 = 'spiceCl_mask.fits'
 
       # note: lmax for spice is 3*NSIDE-1 or less
       ispice(mapDegFile,ClFile1,subav="YES",subdipole="YES")
       Cl_unmasked = hp.read_cl(ClFile1)
       ispice(mapDegFile,ClFile2,maskfile1=maskDegFile,subav="YES",subdipole="YES")
       Cl_masked = hp.read_cl(ClFile2)
-      #ispice(maskDegFile,ClFile3,subav="YES",subdipole="YES")
-      #Cl_mask = hp.read_cl(ClFile3)
-      ell = np.arange(Cl_unmasked.shape[0])
+      Cl_mask = np.zeros(Cl_unmasked.shape[0]) # just a placeholder
+      ell    = np.arange(Cl_unmasked.shape[0])
 
     else: # use anafast
       Cl_unmasked = hp.anafast(smicaMapDeg,lmax=lmax)
@@ -205,36 +221,40 @@ def getSMICA(theta_i=0.0,theta_f=180.0,nSteps=1800,lmax=100,newSMICA=False,useSP
       gcp.showCl(ell,np.array([Cl_masked,Cl_unmasked]),
                  title='power spectra of unmasked, masked SMICA map')
 
+    # limit low l powers if needed
+    for zilch in range(lmin):
+      Cl_unmasked[zilch] = 0
+      Cl_masked[zilch]   = 0
+      Cl_mask[zilch]     = 0
+
     # Legendre transform to real space
     print 'Legendre transform to real space... '
     thetaDomain       = np.linspace(theta_i,theta_f,nSteps+1)
     xArray            = np.cos(thetaDomain*np.pi/180.)
-
     legCoef_unmasked  = (2*ell+1)/(4*np.pi) * Cl_unmasked
-    CofTheta          = legval(xArray,legCoef_unmasked)*1e12 #K^2 to microK^2
     legCoef_masked    = (2*ell+1) * Cl_masked
+    legCoef_mask      = (2*ell+1) * Cl_mask
+    CofTheta          = legval(xArray,legCoef_unmasked)*1e12 #K^2 to microK^2
     CCutofThetaTA     = legval(xArray,legCoef_masked  )*1e12 #K^2 to microK^2
 
     if useSPICE:
       CCutofTheta     = CCutofThetaTA/(4*np.pi)
     else:
-      legCoef_mask    = (2*ell+1) * Cl_mask
       AofThetaInverse = legval(xArray,legCoef_mask)
       CCutofTheta     = CCutofThetaTA/AofThetaInverse
 
     # back to frequency space for S_{1/2} = CIC calculation
-    legCoefs = legfit(xArray,CCutofTheta,lmax)
-    print 'lmax: ',lmax,', #coefs: ',legCoefs.size,', # ell: ',ell.size
-    CCutofL = legCoefs*(4*np.pi)/(2*ell[:lmax+1]+1) #crashed here when tried with lmax=400
-    #  message was: "ValueError: operands could not be broadcast together with shapes (401,) (384,)
-    #  this seems to be a limitation of SPICE, it's output doesn't go to high ell (lmax=383)
-    #  To get SPICE to higher l, need to increase NSIDE since lmax <= NSIDE*3-1
+    if useSPICE:
+      CCutofL = Cl_masked[:lmax+1]*1e12 #K^2 to microK^2
+    else:
+      legCoefs = legfit(xArray,CCutofTheta,lmax)
+      CCutofL = legCoefs*(4*np.pi)/(2*ell[:lmax+1]+1)
 
     # S_{1/2}
-    myJmn = getJmn(lmax=lmax)[2:,2:] # do not include monopole, dipole
-    SMasked = np.dot(CCutofL[2:],np.dot(myJmn,CCutofL[2:]))
-    SNoMask = np.dot(Cl_unmasked[2:lmax+1],
-                     np.dot(myJmn,Cl_unmasked[2:lmax+1]))*1e24 #two factors of K^2 to muK^2
+    myJmn = getJmn(lmax=lmax)
+    SMasked = np.dot(CCutofL[lmin:],np.dot(myJmn[lmin:,lmin:],CCutofL[lmin:]))
+    SNoMask = np.dot(Cl_unmasked[lmin:lmax+1],np.dot(myJmn[lmin:,lmin:],
+          Cl_unmasked[lmin:lmax+1]))*1e24 #two factors of K^2 to muK^2
 
     # save results
     if useSPICE:
@@ -285,7 +305,8 @@ def SOneHalf(thetaArray, CArray, nTerms=250):
 ################################################################################
 # testing code
 
-def test(useCLASS=1,useLensing=0,classCamb=1,nSims=1000,lmax=100,newSMICA=False):
+def test(useCLASS=1,useLensing=0,classCamb=1,nSims=1000,lmax=100,lmin=2,
+         newSMICA=False,newDeg=False):
   """
     code for testing the other functions in this module
     Inputs:
@@ -294,7 +315,7 @@ def test(useCLASS=1,useLensing=0,classCamb=1,nSims=1000,lmax=100,newSMICA=False)
         CAMB Cl has ISWin/out split: ISWin: 0.4<z<0.75, ISWout: the rest
         Note: CAMB results include primary in ISWin and ISWout (not as intended)
         default: 1
-      useLensing: set to 1 to use lensed maps, 0 for non-lensed
+      useLensing: set to 1 to use lensed Cl, 0 for non-lensed
         default: 0
       classCamb: if 1: use the CAMB format of CLASS output, if 0: use CLASS format
         Note: parameter not used if useCLASS = 0
@@ -303,13 +324,23 @@ def test(useCLASS=1,useLensing=0,classCamb=1,nSims=1000,lmax=100,newSMICA=False)
         default: 1000
       lmax: the highest l to include in Legendre transforms
         default: 100
+      lmin: the lowest l to include in S_{1/2} = CIC calculations
       newSMICA: set to True to recalculate SMICA results
         default: False
-
+      newDeg: set to True to recalculate map and mask degredations
+        default: True
   """
 
   # load data
   ell,fullCl,primCl,lateCl,crossCl = gcp.loadCls(useCLASS=useCLASS,useLensing=useLensing,classCamb=classCamb)
+
+  # fill beginning with zeros
+  startEll = ell[0]
+  ell      = np.append(np.arange(startEll),ell)
+  fullCl   = np.append(np.zeros(startEll),fullCl)
+  primCl   = np.append(np.zeros(startEll),primCl)
+  lateCl   = np.append(np.zeros(startEll),lateCl)
+  crossCl  = np.append(np.zeros(startEll),crossCl)
 
   conv = ell*(ell+1)/(2*np.pi)
   #print ell,conv #ell[0]=2.0
@@ -365,8 +396,8 @@ def test(useCLASS=1,useLensing=0,classCamb=1,nSims=1000,lmax=100,newSMICA=False)
   #   note: getSMICA uses linspace in theta for thetaArray
   #newSMICA = False#True
   thetaArray2, C_SMICA, C_SMICAmasked, S_SMICAnomask, S_SMICAmasked = \
-    getSMICA(theta_i=theta_i,theta_f=theta_f,nSteps=nSteps,lmax=lmax,newSMICA=newSMICA,
-             useSPICE=False)
+    getSMICA(theta_i=theta_i,theta_f=theta_f,nSteps=nSteps,lmax=lmax,lmin=lmin,
+             newSMICA=newSMICA,newDeg=newDeg,useSPICE=False)
   print ''
   print 'S_{1/2}(anafast): SMICA, no mask: ',S_SMICAnomask,', masked: ',S_SMICAmasked
   print ''
@@ -374,8 +405,8 @@ def test(useCLASS=1,useLensing=0,classCamb=1,nSims=1000,lmax=100,newSMICA=False)
   #   note: getSMICA uses linspace in theta for thetaArray
   #newSMICA = False#True
   thetaArray2sp, C_SMICAsp, C_SMICAmaskedsp, S_SMICAnomasksp, S_SMICAmaskedsp = \
-    getSMICA(theta_i=theta_i,theta_f=theta_f,nSteps=nSteps,lmax=lmax,newSMICA=newSMICA,
-             useSPICE=True)
+    getSMICA(theta_i=theta_i,theta_f=theta_f,nSteps=nSteps,lmax=lmax,lmin=lmin,
+             newSMICA=newSMICA,newDeg=newDeg,useSPICE=True)
   print ''
   print 'S_{1/2}(spice): SMICA, no mask: ',S_SMICAnomasksp,', masked: ',S_SMICAmaskedsp
   print ''
@@ -416,7 +447,7 @@ def test(useCLASS=1,useLensing=0,classCamb=1,nSims=1000,lmax=100,newSMICA=False)
   Clsim_full_sum = np.zeros(lmax+1)
 
   # get Jmn matrix for harmonic space S_{1/2} calc.
-  myJmn = getJmn(lmax=lmax)[2:,2:] # do not include monopole, dipole
+  myJmn = getJmn(lmax=lmax)
 
   doTime = True # to time the run and print output
   startTime = time.time()
@@ -435,18 +466,19 @@ def test(useCLASS=1,useLensing=0,classCamb=1,nSims=1000,lmax=100,newSMICA=False)
     # first without mask  
     #   note: getCovar uses linspace in x for thetaArray
     thetaArray,cArray = getCovar(ell[:lmax+1],Clsim_full,theta_i=theta_i,theta_f=theta_f,
-                                 nSteps=nSteps)
+                                 nSteps=nSteps,lmin=lmin)
     covEnsembleFull[nSim] = cArray
     covTheta = thetaArray
 
     # S_{1/2}
-    sEnsembleFull[nSim] = np.dot(Clsim_full[2:],np.dot(myJmn,Clsim_full[2:]))
+    sEnsembleFull[nSim] = np.dot(Clsim_full[lmin:],np.dot(myJmn[lmin:,lmin:],Clsim_full[lmin:]))
 
     # now with a mask
+    # should have default RING ordering
     # pixel window and beam already accounted for in true Cls
     #mapSim = hp.alm2map(alm_prim+alm_late,myNSIDE,lmax=lmax,pixwin=True,sigma=5./60*np.pi/180)
     mapSim = hp.alm2map(alm_prim+alm_late,myNSIDE,lmax=lmax)
-    #mapSim = hp.synfast(Clsim_full,myNSIDE,lmax=lmax) # should have default RING ordering
+
     # super lame that spice needs to read/write from disk, but here goes...
     mapTempFile = 'tempMap.fits'
     ClTempFile  = 'tempCl.fits'
@@ -457,11 +489,11 @@ def test(useCLASS=1,useLensing=0,classCamb=1,nSims=1000,lmax=100,newSMICA=False)
     ell2 = np.arange(Cl_masked.shape[0])
     #   note: getCovar uses linspace in x for thetaArray
     thetaArray,cArray2 = getCovar(ell2[:lmax+1],Cl_masked[:lmax+1],theta_i=theta_i,
-                                   theta_f=theta_f,nSteps=nSteps)
+                                   theta_f=theta_f,nSteps=nSteps,lmin=lmin)
     covEnsembleCut[nSim] = cArray2
     
     # S_{1/2}
-    sEnsembleCut[nSim] = np.dot(Cl_masked[2:lmax+1],np.dot(myJmn,Cl_masked[2:lmax+1]))
+    sEnsembleCut[nSim] = np.dot(Cl_masked[lmin:lmax+1],np.dot(myJmn[lmin:,lmin:],Cl_masked[lmin:lmax+1]))
 
     doPlot = False#True
     if doPlot:
