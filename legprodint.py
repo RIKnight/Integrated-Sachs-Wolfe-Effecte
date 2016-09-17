@@ -18,6 +18,7 @@ Modification History:
   Added S_{1/2} mod; ZK, 2016.07.24
   Added testing comparing against integration method; ZK, 2016.08.26
   Fixed serious misuse of "break" statement; ZK, 2016.08.26
+  Added doSave to getImn, getJmn; ZK, 2016.09.12
 
 """
 import numpy as np
@@ -46,7 +47,7 @@ def legendreSeries(x,lmax=101):
   return Pl
 
 
-def getImn(makeNew=True,endX=0.5,lmax=100,fileName='legProdInt.npy'):
+def getImn(makeNew=True,endX=0.5,lmax=100,fileName='legProdInt.npy',doSave=True):
   """
   Purpose:
     Creates or loads Imn(x) array.
@@ -61,6 +62,10 @@ def getImn(makeNew=True,endX=0.5,lmax=100,fileName='legProdInt.npy'):
       Default: 100
     fileName: string containin the file name to load/save array
       Default: legProdInt.npy
+    doSave: set to True to save a file, if makeNew is also True.
+      Default: True
+  Returns:
+    Imn(endX)
 
   """
   Imn = np.array([])
@@ -86,17 +91,18 @@ def getImn(makeNew=True,endX=0.5,lmax=100,fileName='legProdInt.npy'):
             Imn[m,n] = ( m*Pl[n]*(Pl[m-1]-endX*Pl[m]) 
                         - n*Pl[m]*(Pl[n-1]-endX*Pl[n]) ) \
                         / (n*(n+1)-m*(m+1))
-    np.save(fileName,Imn)
+    if doSave:
+      np.save(fileName,Imn)
   else: #load from file
     Imn = np.load(fileName)
 
   return Imn[:-1,:]
 
-def getJmn(makeNew=True,endX=0.5,lmax=100):
+def getJmn(makeNew=True,endX=0.5,lmax=100,doSave=True):
   """
   wrapper around getImn to do ell,ell' scaling
   """
-  myImn = getImn(makeNew=makeNew,endX=endX,lmax=lmax)
+  myImn = getImn(makeNew=makeNew,endX=endX,lmax=lmax,doSave=doSave)
   ellFactor = np.array([(2*ell+1) for ell in range(lmax+1)])/(4*np.pi)
 
   return myImn*np.outer(ellFactor,ellFactor)

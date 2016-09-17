@@ -28,6 +28,9 @@ Modification History:
   Fixed indexing problem for Cl in hp.synalm; ZK, 2016.09.07
   Added lmin to CIC calculations; ZK, 2016.09.07
   Added lmin to C(theta) plotting; ZK, 2016.09.08
+  Added option to suppress C2 in sims; ZK, 2016.09.13
+  Switched useSPICE default to True in getSMICA; ZK, 2016.09.13
+  Added [:lmax+1] to getCovar calls; ZK, 2016.09.14
 
 """
 
@@ -71,13 +74,21 @@ def getCovar(ell,Cl,theta_i=0.0,theta_f=180.0,nSteps = 1800,doTime=False,lmin=0)
     C(theta), the covariance array
 
   """
+
+  #plt.plot(ell,Cl)
+  #plt.show()
+
   startTime = time.time()
 
   # fill beginning with zeros
   startEll = ell[0]
   ell = np.append(np.arange(startEll),ell)
   Cl  = np.append(np.zeros(startEll),Cl)
-  for zilch in range(lmin):
+
+  # limit low l powers if needed
+  #for zilch in range(lmin):
+  # kludge for removal of low power dip
+  for zilch in range(lmin):#+range(20,28):
     Cl[zilch] = 0
 
   # create legendre coefficients
@@ -93,11 +104,14 @@ def getCovar(ell,Cl,theta_i=0.0,theta_f=180.0,nSteps = 1800,doTime=False,lmin=0)
 
   if doTime: print 'time elapsed: ',int((time.time()-startTime)/60),' minutes'
 
+  #plt.plot(np.arccos(xArray)*180./np.pi,covar)
+  #plt.show()
+
   return np.arccos(xArray)*180./np.pi,covar
 
 
 def getSMICA(theta_i=0.0,theta_f=180.0,nSteps=1800,lmax=100,lmin=2,
-             newSMICA=False,useSPICE=False,newDeg=False):
+             newSMICA=False,useSPICE=True,newDeg=False):
   """
   Purpose:
     load CMB and mask maps from files, return correlation function for
@@ -115,7 +129,7 @@ def getSMICA(theta_i=0.0,theta_f=180.0,nSteps=1800,lmax=100,lmin=2,
       if False, will load C(theta) curves from file
     useSPICE: if True, will use SPICE to find power spectra
       if False, will use anafast, following Copi et. al. 2013
-      Default: False
+      Default: True
     newDeg: set to True to recalculate map and mask degredations
       Note: the saved files are dependent on the value of lmax that was used
       Default: False
@@ -221,27 +235,26 @@ def getSMICA(theta_i=0.0,theta_f=180.0,nSteps=1800,lmax=100,lmin=2,
       gcp.showCl(ell,np.array([Cl_masked,Cl_unmasked]),
                  title='power spectra of unmasked, masked SMICA map')
 
-    # limit low l powers if needed
-    for zilch in range(lmin):
-      Cl_unmasked[zilch] = 0
-      Cl_masked[zilch]   = 0
-      Cl_mask[zilch]     = 0
-
     # Legendre transform to real space
     print 'Legendre transform to real space... '
-    thetaDomain       = np.linspace(theta_i,theta_f,nSteps+1)
-    xArray            = np.cos(thetaDomain*np.pi/180.)
-    legCoef_unmasked  = (2*ell+1)/(4*np.pi) * Cl_unmasked
-    legCoef_masked    = (2*ell+1) * Cl_masked
-    legCoef_mask      = (2*ell+1) * Cl_mask
-    CofTheta          = legval(xArray,legCoef_unmasked)*1e12 #K^2 to microK^2
-    CCutofThetaTA     = legval(xArray,legCoef_masked  )*1e12 #K^2 to microK^2
-
+    # note: getCovar uses linspace in x for thetaArray
+    thetaDomain,CofTheta      = getCovar(ell[:lmax+1],Cl_unmasked[:lmax+1],theta_i=theta_i,
+                                    theta_f=theta_f,nSteps=nSteps,lmin=lmin)
+    thetaDomain,CCutofThetaTA = getCovar(ell[:lmax+1],Cl_masked[:lmax+1],  theta_i=theta_i,
+                                    theta_f=theta_f,nSteps=nSteps,lmin=lmin)
+    CofTheta      *= 1e12 # K^2 to microK^2
+    CCutofThetaTA *= 1e12 # K^2 to microK^2
+    
     if useSPICE:
-      CCutofTheta     = CCutofThetaTA/(4*np.pi)
+      CCutofTheta     = CCutofThetaTA#/(4*np.pi)
     else:
-      AofThetaInverse = legval(xArray,legCoef_mask)
+      thetaDomain,AofThetaInverse = getCovar(ell[:lmax+1],Cl_mask[:lmax+1],theta_i=theta_i,
+                                    theta_f=theta_f,nSteps=nSteps,lmin=0) # don't zilch the mask
+      # note: zilching the mask's low power drastically changed C(theta) for masked anafast  
+      #   Not sure why.
       CCutofTheta     = CCutofThetaTA/AofThetaInverse
+
+    xArray            = np.cos(thetaDomain*np.pi/180.)
 
     # back to frequency space for S_{1/2} = CIC calculation
     if useSPICE:
@@ -328,7 +341,7 @@ def test(useCLASS=1,useLensing=0,classCamb=1,nSims=1000,lmax=100,lmin=2,
       newSMICA: set to True to recalculate SMICA results
         default: False
       newDeg: set to True to recalculate map and mask degredations
-        default: True
+        default: False
   """
 
   # load data
@@ -341,6 +354,15 @@ def test(useCLASS=1,useLensing=0,classCamb=1,nSims=1000,lmax=100,lmin=2,
   primCl   = np.append(np.zeros(startEll),primCl)
   lateCl   = np.append(np.zeros(startEll),lateCl)
   crossCl  = np.append(np.zeros(startEll),crossCl)
+
+  # suppress C_2 to see what happens in enesmble
+  suppressC2 = False
+  suppFactor = 0.23 # from Tegmark et. al. 2003, figure 13 (WMAP)
+  if suppressC2:
+    fullCl[2] *= suppFactor
+    primCl[2] *= suppFactor
+    lateCl[2] *= suppFactor
+    crossCl[2] *= suppFactor
 
   conv = ell*(ell+1)/(2*np.pi)
   #print ell,conv #ell[0]=2.0
@@ -429,7 +451,7 @@ def test(useCLASS=1,useLensing=0,classCamb=1,nSims=1000,lmax=100,lmin=2,
 
   # apply beam and pixel window functions to power spectra
   #   note: to ignore the non-constant pixel shape, W(l) must be > B(l)
-  #     however, this is not true for NSIDE=128 and gauss_beam(5'')
+  #     however, this is not true for NSIDE=128 and gauss_beam(5')
   #   Here I ignore this anyway and proceed
   myNSIDE = 128 # must be same NSIDE as in getSMICA function
   Wpix = hp.pixwin(myNSIDE)
@@ -465,8 +487,8 @@ def test(useCLASS=1,useLensing=0,classCamb=1,nSims=1000,lmax=100,lmin=2,
 
     # first without mask  
     #   note: getCovar uses linspace in x for thetaArray
-    thetaArray,cArray = getCovar(ell[:lmax+1],Clsim_full,theta_i=theta_i,theta_f=theta_f,
-                                 nSteps=nSteps,lmin=lmin)
+    thetaArray,cArray = getCovar(ell[:lmax+1],Clsim_full[:lmax+1],theta_i=theta_i,
+                                  theta_f=theta_f,nSteps=nSteps,lmin=lmin)
     covEnsembleFull[nSim] = cArray
     covTheta = thetaArray
 
@@ -530,7 +552,6 @@ def test(useCLASS=1,useLensing=0,classCamb=1,nSims=1000,lmax=100,lmin=2,
                      label='simulation 1sigma envelope')
     plt.plot(thetaArray2,C_SMICA,label='SMICA R2 (inpainted,anafast)')
     plt.plot(thetaArray2sp,C_SMICAsp,label='SMICA R2 (inpainted,spice)')
-    
 
     plt.xlabel('theta (degrees)')
     plt.ylabel('C(theta)')
