@@ -1,7 +1,7 @@
 #! /usr/bin/env python
 """
 Name:
-  optimizeSx  
+  optimizeSx2  
 Purpose:
   explore the presumed arbitrary cut off point for S_{1/2} by optimizing
     PTE(S_x) for random CMB realizations
@@ -10,19 +10,19 @@ Note:
     "the statistical significance of the absence of large-angle correlations 
      is not particularly dependent either on the precise value of either limit" 
      (of the |C(theta)|^2 integral)
+  This program copied from optimizeSx, and modified to call c programs for
+    nested looping
 Uses:
   healpy
   legprodint (legendre product integral)
   ramdisk.sh (creates and deletes RAM disks)
+  optimizeSx.so (c language shared object)
 Inputs:
 
 Outputs:
 
 Modification History:
-  Written by Z Knight, 2016.09.12
-  Added optimization for SMICA values by putting it into the ensemble;
-    Added switch for suppressC2; ZK, 2016.09.20
-  Added RAM Disk to speed up SpICE calls; ZK, 2016.09.23
+  Written by Z Knight, 2016.09.26
   
 """
 
@@ -32,6 +32,8 @@ import healpy as hp
 import time # for measuring duration
 from scipy.interpolate import interp1d
 import subprocess # for calling RAM Disk scripts
+import ctypes
+from numpy.ctypeslib import ndpointer
 
 import get_crosspower as gcp # for loadCls
 from numpy.polynomial.legendre import legval # for C_l -> C(theta) conversion
@@ -248,15 +250,20 @@ def test(useCLASS=1,useLensing=0,classCamb=1,nSims=1000,lmax=100,lmin=2,
   dummy = lambda x: x**2
   SofXList = [dummy for i in range(nSims)]
 
+
+  # here is where this program starts to diverge from the purely python version
+  # create array to hold S_x values
+  SxValsArray = np.empty([nSims,nXvals])
+
   for nSim in range(nSims):
     print 'starting S(x) sim ',nSim+1,' of ',nSims
-    for index,xVal in enumerate(xVals):
+    for index,xVal in enumerate(xVals):  #not using xVal?
       SxToInterpolate[index] = np.dot(ClEnsembleCut[nSim,lmin:lmax+1],
           np.dot(Jmnx[index,lmin:,lmin:],ClEnsembleCut[nSim,lmin:lmax+1]))
     SofX = interp1d(xVals,SxToInterpolate)
-    #SofXList = SofXList.append(SofX)
-    # Apparently appending a function to an empty list is not allowed. Instead:
     SofXList[nSim] = SofX
+
+    SxValsArray[nSim] = SxToInterpolate
 
     #print SofXList#[nSim]
     doPlot=False#True
@@ -277,123 +284,63 @@ def test(useCLASS=1,useLensing=0,classCamb=1,nSims=1000,lmax=100,lmin=2,
       plotx = np.cos(plotTheta*np.pi/180)
       plotS = SofXList[nSim](plotx)
       plt.plot(plotx,plotS,label='sim '+str(nSim+1))
+      #plt.plot(xVals,SxValsArray[nSim],label='sim '+str(nSim+1))
     #plt.legend()
     plt.title('S(x) for simulations')
     plt.show()
 
 
-
   ##############################################################################
+  # send data to c library function in optimizeSx.so
+  #
   # create Pval(x) for each S(x), using ensemble
-  # Pval: probability of result equal to or more extreme
-
-  # create list of functions
-  PvalOfXList = [dummy for i in range(nSims)]
-  
-  for nSim in range(nSims):
-    print 'starting Pval(x) sim ',nSim+1,' of ',nSims
-
-    def PvalOfX(x):
-      nUnder = 0 # will also include nEqual
-      nOver  = 0
-      threshold = SofXList[nSim](x)
-      for nSim2 in range(nSims):
-         Sx = SofXList[nSim2](x)
-         if Sx > threshold: 
-           nOver  += 1
-           #print "Over! mySx: ",Sx,", threshold: ",threshold
-         else: 
-           nUnder += 1
-           #print "Under! mySx: ",Sx,", threshold: ",threshold
-      #print "nUnder: ",nUnder,", nOver: ",nOver
-      return nUnder/float(nUnder+nOver)
-    PvalOfXList[nSim] = PvalOfX
-
-  
-  ##############################################################################
+  #   Pval: probability of result equal to or more extreme
   # find global minimum for each Pval(x)
-  # simply use same xVals as above, at one degree intervals
-  # if there are equal p-values along the range, the one with the highest xVal
+  # if there are equal p-values along the range, the one with the lowest xVal
   #   will be reported
 
-  PvalMinima = np.empty(nSims)
-  xValMinima = np.empty(nSims)
+  # write to file to send to c program
+  #np.savetxt('optSx.tmp',np.vstack((xVals,SxValsArray)))
+  #print 'file optSx.tmp created.'
+
+  # try calling c as shared library
+  #import ctypes
+  #from numpy.ctypeslib import ndpointer
+  lib = ctypes.cdll.LoadLibrary("../../C/optimizeSx.so")
+  cOptSx = lib.optSx
+  cOptSx.restype = None
+  cOptSx.argtypes = [ndpointer(ctypes.c_double, flags="C_CONTIGUOUS"),
+                     ctypes.c_size_t,
+                     ndpointer(ctypes.c_double, flags="C_CONTIGUOUS",ndim=2,shape=(nSims,nXvals)),
+                     ctypes.c_size_t, ctypes.c_int,
+                     ndpointer(ctypes.c_double, flags="C_CONTIGUOUS"),
+                     ndpointer(ctypes.c_double, flags="C_CONTIGUOUS")]
+  
+  nSearch = 181 # same num as nXvals for now, but spaced equally in x, not theta
+  PvalMinima = np.empty(nSims) # for return values
+  XvalMinima = np.empty(nSims) # for return values
 
   doTime = True # to time the run and print output
   startTime = time.time()
-  for nSim in range(nSims):
-    print 'starting minimum Pval(x) search for sim ',nSim+1,' of ',nSims
-    PvalOfX = PvalOfXList[nSim]
-    #print 'function: ',PvalOfX
-    PvalMinima[nSim] = PvalOfX(1.0)
-    xValMinima[nSim] = 1.0
-
-    Pvals = np.empty(nXvals)
-    for index,xVal in enumerate(xVals): # will start from 1 and go down to -1
-      myPval = PvalOfX(xVal)
-      Pvals[index] = myPval
-      #print "nSim: ",nSim,", n: ",index,", myPval: ",myPval,", PvalMinima[nSim]: ",PvalMinima[nSim]
-      if myPval < PvalMinima[nSim] and xVal > -0.999: #avoid the instabililility
-        PvalMinima[nSim] = myPval
-        xValMinima[nSim] = xVal
-        #print 'nSim: ',nSim+1,', new x for minimum Pval: ',xVal
-    #raw_input("Finished sim "+str(nSim+1)+" of "+str(nSims)+".  Press enter to continue")
-
-    doPlot = False#True
-    if doPlot and np.random.uniform() < 0.1: #randomly choose about 1/10 of them
-      plt.plot(xVals,Pvals)
-      plt.vlines(xValMinima[nSim],0,1)
-      plt.xlabel('x = cos(theta), min at '+str(xValMinima[nSim]))
-      plt.ylabel('P-value')
-      plt.title('P-values for simulation '+str(nSim+1)+' of '+str(nSims)+
-          ', p_min = '+str(PvalMinima[nSim]))
-      plt.xlim(-1.05,1.05)
-      plt.ylim(-0.05,1.05)
-      plt.show()
-
+  #print  SxValsArray[5]
+  #raw_input("that was python's SxValsArray[5].  Press enter.")
+  cOptSx(xVals,nXvals,SxValsArray,nSims,nSearch,PvalMinima,XvalMinima)
   timeInterval2 = time.time()-startTime
   if doTime: print 'time elapsed: ',int(timeInterval2/60.),' minutes'
 
 
-  """
-  # A MYSTERY!  Something about the following code causes Pvals to always take 
-  #   the values of PvalOfXList[nSims](xVals)  WTF?  Omit for now. 
-  #   Testing seems to indicate that PvalOfXList functions still have different
-  #   locations in memory, but they all seem to be evaluating the same.
-  #   However, when the previous block of code is copied to come again after
-  #   this one, it behaves properly again.
-  # see how well it did
-  doPlot = False#True
-  if doPlot:
-    nPlots = 10
-    for nPlot in range(nPlots):
-      print 'plot ',nPlot+1,' of ',nPlots
-      toPlot = nPlot#np.random.randint(0,high=nSims)
-      #for nSim in range(nSims):
-      Pvals = np.empty(nXvals)
-      PvalOfX = PvalOfXList[nPlot]
-      print 'function: ',PvalOfX
-      for index, xVal in enumerate(xVals):
-        Pvals[index] = PvalOfX(xVal)
-        #print index,Pvals[index]
-      #print Pvals
-      plt.plot(xVals,Pvals)
-      plt.vlines(xValMinima[toPlot],0,1)
-      plt.xlabel('x = cos(theta), min at '+str(xValMinima[toPlot]))
-      plt.ylabel('P-value')
-      plt.title('P-values for simulation '+str(toPlot+1)+' of '+str(nSims))
-      plt.show()
-  """
-
   ##############################################################################
-  # create distribution of S(xValMinima)
+  # create distribution of S(XvalMinima)
 
   SxEnsembleMin = np.empty(nSims)
   for nSim in range(nSims):
-    SxEnsembleMin[nSim] = SofXList[nSim](xValMinima[nSim])
+    SxEnsembleMin[nSim] = SofXList[nSim](XvalMinima[nSim])
+  #print XvalMinima
+  #print SxEnsembleMin
 
   # extract SMICA result
   Ssmica = SxEnsembleMin[0]
+
 
   ##############################################################################
   # plot/print results
@@ -403,20 +350,25 @@ def test(useCLASS=1,useLensing=0,classCamb=1,nSims=1000,lmax=100,lmin=2,
   myBins = np.logspace(1,7,100)
   plt.axvline(x=Ssmica,color='g',linewidth=3,label='SMICA masked')
   plt.hist(SxEnsembleMin[1:], bins=myBins,histtype='step',label='cut sky')
-    # [1:] to omit SMICA value
+                      # [1:] to omit SMICA value
 
   plt.gca().set_xscale("log")
   plt.legend()
   plt.xlabel('S_x (microK^4)')
   plt.ylabel('Counts')
-  plt.title('S_x of '+str(nSims-1)+' simulated CMBs') #-1 due to SMICA in zero position
+  if suppressC2:
+    plt.title('S_x of '+str(nSims-1)+' simulated CMBs, C_2 suppressed') 
+                                #-1 due to SMICA in zero position
+  else:
+    plt.title('S_x of '+str(nSims-1)+' simulated CMBs') 
+                                #-1 due to SMICA in zero position
   plt.show()
 
   print ' '
   print 'nSims = ',nSims-1
   print 'time interval 1: ',timeInterval1,'s, time interval 2: ',timeInterval2,'s'
   print '  => ',timeInterval1/(nSims-1),' s/sim, ',timeInterval2/(nSims-1),' s/sim'
-  print 'SMICA optimized S_x: S = ',Ssmica,', for x = ',xValMinima[0], \
+  print 'SMICA optimized S_x: S = ',Ssmica,', for x = ',XvalMinima[0], \
         ', with p-value ',PvalMinima[0]
   print ' '
 
@@ -425,6 +377,6 @@ def test(useCLASS=1,useLensing=0,classCamb=1,nSims=1000,lmax=100,lmin=2,
   print ''
 
 if __name__=='__main__':
-  test(nSims=10)
+  test(nSims=500,suppressC2=False)
 
 

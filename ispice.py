@@ -12,12 +12,6 @@ Includes:
         look_for_spice()
         thinc_exists()
         tools()
-
-  Downloaded from www2.iap.fr/users/hivon/software/PolSpice/ on 2016.07.12
-        patch to v03-01-06
-        improvements to ispice.py by Kyle Story:
-          - added corfile argument to output angular correlation functions,
-          - more efficient search for spice executable.
   """
 
 
