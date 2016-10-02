@@ -2,8 +2,8 @@
 /*
  * create S_x functions from input file
  * create Pval(x) for each S_x using ensemble
- * find global minimu for each Pval(x)
- * create distribution os S(xValMinima)
+ * find global minimum for each Pval(x)
+ *   -> can be used to create distribution S(xValMinima)
  *
  * Modification History:
  *  Written by Z Knight, 2016.09.26
@@ -11,6 +11,7 @@
  *    apparently passing python numpy arrays into SxVecs using 
  *    python's ctypes ndpointer inadvertantly flattened the array.
  *    Fixed by rewriting to expect 1d array; ZK, 2016.09.28
+ *    Modified xstart value to avoid oddness near x=-1.0; ZK, 2016.09.30
  *
  */
 
@@ -46,7 +47,7 @@ double arrayLinearInterp(const double *xVec, const double *yVec, const double xI
   // due to decreasing order of xVec, signs are not as expected:
   //if (xInterp < xVec[0] || xInterp > xVec[xSize-1]) {
   if (xInterp > xVec[0] || xInterp < xVec[xSize-1]) {
-    printf("%f4.2, %f4.2, %f4.2",xVec[0],xInterp,xVec[xSize-1]);
+    printf("%f, %f, %f",xVec[0],xInterp,xVec[xSize-1]);
     puts("xInterp outside of interpolation range.  Exiting.");
     return -1;
   }
@@ -132,9 +133,9 @@ void optSx(const double *xVec, size_t xSize, const double *SxVecs, size_t nSims,
   //double myPvals[nSearch];
   double myPval;
   double myXvals[nSearch];
-  double xStart = -1.0; //start for range (-1 <= x <= 1)
+  double xStart = -0.999; //-1.0; //start for range (-1 <= x <= 1)
   for (int n = 0; n < nSearch; n++) {
-    myXvals[n] = xStart + 2*(n/(double)(nSearch-1));
+    myXvals[n] = -1.0 + 2*(n/(double)(nSearch-1)); // don't use xStart here
   }
 
   //size_t nSim; // loop index

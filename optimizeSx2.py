@@ -23,6 +23,7 @@ Outputs:
 
 Modification History:
   Written by Z Knight, 2016.09.26
+  Added S_x density and P histograms; ZK, 2016.09.30
   
 """
 
@@ -276,7 +277,7 @@ def test(useCLASS=1,useLensing=0,classCamb=1,nSims=1000,lmax=100,lmin=2,
       plt.title('S(x) for simulation '+str(nSim+1))
       plt.show()
 
-  doPlot = True
+  doPlot = False#True
   if doPlot:
     for nSim in range(nSims):
       nplotx = (nXvals-1)*10+1
@@ -330,30 +331,43 @@ def test(useCLASS=1,useLensing=0,classCamb=1,nSims=1000,lmax=100,lmin=2,
 
 
   ##############################################################################
+  # save results
+  saveFile = "optSxResult2.npy"
+  np.save(saveFile,np.vstack((PvalMinima,XvalMinima)))
+
+  # or load results?
+  #myPX = np.load(saveFile)
+  #PvalMinima = myPX[0]
+  #XvalMinima = myPX[1]
+
+  ##############################################################################
   # create distribution of S(XvalMinima)
 
   SxEnsembleMin = np.empty(nSims)
   for nSim in range(nSims):
     SxEnsembleMin[nSim] = SofXList[nSim](XvalMinima[nSim])
-  #print XvalMinima
+  print XvalMinima
   #print SxEnsembleMin
 
-  # extract SMICA result
-  Ssmica = SxEnsembleMin[0]
+  # now S_x / delta_x
+  SxEnsembleMinDensity = SxEnsembleMin/(XvalMinima + 1)
 
+  # extract SMICA results
+  Ssmica = SxEnsembleMin[0]
+  SsmicaDensity = SxEnsembleMinDensity[0]
+  Psmica = PvalMinima[0]
 
   ##############################################################################
   # plot/print results
 
   
   print 'plotting S_x distribution... '
-  myBins = np.logspace(1,7,100)
+  myBins = np.logspace(0,6,100)
   plt.axvline(x=Ssmica,color='g',linewidth=3,label='SMICA masked')
   plt.hist(SxEnsembleMin[1:], bins=myBins,histtype='step',label='cut sky')
                       # [1:] to omit SMICA value
-
   plt.gca().set_xscale("log")
-  plt.legend()
+  #plt.legend()
   plt.xlabel('S_x (microK^4)')
   plt.ylabel('Counts')
   if suppressC2:
@@ -362,6 +376,34 @@ def test(useCLASS=1,useLensing=0,classCamb=1,nSims=1000,lmax=100,lmin=2,
   else:
     plt.title('S_x of '+str(nSims-1)+' simulated CMBs') 
                                 #-1 due to SMICA in zero position
+  plt.show()
+
+  print 'plotting S_x density distribution... '
+  myBins = np.logspace(1,7,100)
+  plt.axvline(x=SsmicaDensity,color='g',linewidth=3,label='SMICA masked')
+  plt.hist(SxEnsembleMinDensity[1:], bins=myBins,histtype='step',label='cut sky')
+  plt.gca().set_xscale("log")
+  #plt.legend()
+  plt.xlabel('S_x / delta_x (microK^4)')
+  plt.ylabel('Counts')
+  if suppressC2:
+    plt.title('S_x / delta_x of '+str(nSims-1)+' simulated CMBs, C_2 suppressed') 
+  else:
+    plt.title('S_x / delta_x of '+str(nSims-1)+' simulated CMBs') 
+  plt.show()
+
+  print 'plotting P-value distribution... '
+  myBins = np.logspace(-3,0,100)
+  plt.axvline(x=Psmica,color='g',linewidth=3,label='SMICA masked')
+  plt.hist(PvalMinima[1:], bins=myBins,histtype='step',label='cut sky')
+  plt.gca().set_xscale("log")
+  #plt.legend()
+  plt.xlabel('P-value')
+  plt.ylabel('Counts')
+  if suppressC2:
+    plt.title('P-value of S_x of '+str(nSims-1)+' simulated CMBs, C_2 suppressed') 
+  else:
+    plt.title('P-value of S_x of '+str(nSims-1)+' simulated CMBs') 
   plt.show()
 
   print ' '
