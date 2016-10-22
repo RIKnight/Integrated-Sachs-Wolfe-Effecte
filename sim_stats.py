@@ -8,7 +8,8 @@ Uses:
   healpy
   get_crosspower.py
   spice, ispice.py
-  legprodint.py
+  legprodint.py (legendre product integral)
+  ramdisk.sh (creates and deletes RAM disks)
 Inputs:
   Data files as specified in get_crosspower.loadCls function
 Outputs:
@@ -31,6 +32,11 @@ Modification History:
   Added option to suppress C2 in sims; ZK, 2016.09.13
   Switched useSPICE default to True in getSMICA; ZK, 2016.09.13
   Added [:lmax+1] to getCovar calls; ZK, 2016.09.14
+  Fixed int warning on index in getCovar; 
+    Switched to useLensing=1 in loadCls; ZK, 2016.10.07
+  Added suppressC2,suppFactor,filterC2,filtFactor to test function
+    parameter list; implemented filterC2; 
+    added ramdisk functionality for SpICE speed; ZK, 2016.10.21
 
 """
 
@@ -48,6 +54,101 @@ from numpy.polynomial.legendre import legfit # for C(theta) -> C_l conversion
 from ispice import ispice
 from legprodint import getJmn
 from scipy.interpolate import interp1d
+import subprocess # for calling RAM Disk scripts
+
+
+################################################################################
+# plotting
+
+def makePlots(saveFile1="simStatResultC.npy",saveFile2="simStatC_SMICA.npy",
+              saveFile3="simStatResultS.npy",lmax=100):
+  """
+  name:
+    makePlots
+  purpose:
+    plotting results of sim_stats
+  inputs:
+    saveFile1,saveFile2,saveFile3... describe these please
+
+    lmax: should be what was used to create results
+      (would be better if it were in the save file but it's not)
+      Default: 100
+  """
+  # load results
+  mySimStatResultC = np.load(saveFile1)
+  myC_SMICA        = np.load(saveFile2)
+  mySimStatResultS = np.load(saveFile3)
+
+  thetaArray      = mySimStatResultC[0]
+  avgEnsembleFull = mySimStatResultC[1]
+  stdEnsembleFull = mySimStatResultC[2]
+  avgEnsembleCut  = mySimStatResultC[3]
+  stdEnsembleCut  = mySimStatResultC[4]
+
+  thetaArray2sp   = myC_SMICA[0]
+  C_SMICAsp       = myC_SMICA[1]
+  C_SMICAmaskedsp = myC_SMICA[2]
+
+  sEnsembleFull   = mySimStatResultS[0]
+  sEnsembleCut    = mySimStatResultS[1]
+
+  nSims = sEnsembleCut.size -1
+
+
+  # do the plotting
+  print 'plotting correlation functions... '
+  # first the whole sky statistics
+  plt.plot(thetaArray,avgEnsembleFull,label='sim. ensemble average (no mask)')
+  plt.fill_between(thetaArray,avgEnsembleFull+stdEnsembleFull,
+                   avgEnsembleFull-stdEnsembleFull,alpha=0.25,
+                   label='simulation 1sigma envelope')
+  #plt.plot(thetaArray2,C_SMICA,label='SMICA R2 (inpainted,anafast)')
+  #plt.plot(thetaArray2sp,C_SMICAsp,label='SMICA R2 (inpainted,spice)')
+  plt.plot(thetaArray2sp,C_SMICAsp,label='SMICA R2 (inpainted)')
+
+  plt.xlabel('theta (degrees)')
+  plt.ylabel('C(theta)')
+  plt.title('whole sky covariance of '+str(nSims)+' simulated CMBs, lmax='+str(lmax))
+  plt.ylim([-500,1000])
+  plt.plot([0,180],[0,0]) #horizontal line
+  plt.legend()
+  plt.show()
+
+  # now the cut sky
+  plt.plot(thetaArray,avgEnsembleCut,label='sim. ensemble average (masked)')
+  plt.fill_between(thetaArray,avgEnsembleCut+stdEnsembleCut,
+                   avgEnsembleCut-stdEnsembleCut,alpha=0.25,
+                   label='simulation 1sigma envelope')
+  #plt.plot(thetaArray2,C_SMICAmasked,label='SMICA R2 (masked ,anafast)')
+  #plt.plot(thetaArray2sp,C_SMICAmaskedsp,label='SMICA R2 (masked ,spice)')
+  plt.plot(thetaArray2sp,C_SMICAmaskedsp,label='SMICA R2 (masked)')
+  
+  plt.xlabel('theta (degrees)')
+  plt.ylabel('C(theta)')
+  plt.title('cut sky covariance of '+str(nSims)+' simulated CMBs, lmax='+str(lmax))
+  plt.ylim([-500,1000])
+  plt.plot([0,180],[0,0]) #horizontal line
+  plt.legend()
+  plt.show()
+
+  print 'plotting S_{1/2} distributions... '
+  myBins = np.logspace(2,7,100)
+  plt.axvline(x=sEnsembleFull[0],color='b',linewidth=3,label='SMICA inpainted')
+  plt.axvline(x=sEnsembleCut[0] ,color='g',linewidth=3,label='SMICA masked')
+  plt.hist(sEnsembleFull[1:],bins=myBins,histtype='step',label='full sky')
+  plt.hist(sEnsembleCut[1:], bins=myBins,histtype='step',label='cut sky')
+
+  plt.gca().set_xscale("log")
+  plt.legend()
+  plt.xlabel('S_{1/2} (microK^4)')
+  plt.ylabel('Counts')
+  plt.title('S_{1/2} of '+str(nSims)+' simulated CMBs')
+  plt.show()
+
+
+
+################################################################################
+# the main functions: getCovar, getSMICA, and SOneHalf
 
 
 def getCovar(ell,Cl,theta_i=0.0,theta_f=180.0,nSteps = 1800,doTime=False,lmin=0):
@@ -81,7 +182,7 @@ def getCovar(ell,Cl,theta_i=0.0,theta_f=180.0,nSteps = 1800,doTime=False,lmin=0)
   startTime = time.time()
 
   # fill beginning with zeros
-  startEll = ell[0]
+  startEll = int(ell[0])
   ell = np.append(np.arange(startEll),ell)
   Cl  = np.append(np.zeros(startEll),Cl)
 
@@ -318,8 +419,9 @@ def SOneHalf(thetaArray, CArray, nTerms=250):
 ################################################################################
 # testing code
 
-def test(useCLASS=1,useLensing=0,classCamb=1,nSims=1000,lmax=100,lmin=2,
-         newSMICA=False,newDeg=False):
+def test(useCLASS=1,useLensing=1,classCamb=1,nSims=1000,lmax=100,lmin=2,
+         newSMICA=False,newDeg=False,suppressC2=False,suppFactor=0.23,
+         filterC2=False,filtFactor=0.25):
   """
     code for testing the other functions in this module
     Inputs:
@@ -329,7 +431,7 @@ def test(useCLASS=1,useLensing=0,classCamb=1,nSims=1000,lmax=100,lmin=2,
         Note: CAMB results include primary in ISWin and ISWout (not as intended)
         default: 1
       useLensing: set to 1 to use lensed Cl, 0 for non-lensed
-        default: 0
+        default: 1
       classCamb: if 1: use the CAMB format of CLASS output, if 0: use CLASS format
         Note: parameter not used if useCLASS = 0
         default: 1
@@ -338,17 +440,30 @@ def test(useCLASS=1,useLensing=0,classCamb=1,nSims=1000,lmax=100,lmin=2,
       lmax: the highest l to include in Legendre transforms
         default: 100
       lmin: the lowest l to include in S_{1/2} = CIC calculations
+        default: 2
       newSMICA: set to True to recalculate SMICA results
         default: False
       newDeg: set to True to recalculate map and mask degredations
+        (only if newSMICA is also True)
         default: False
+      suppressC2: set to True to suppress theoretical C_2 (quadrupole) by 
+        suppFactor before creating a_lm.s
+        Default: False
+      suppFactor: multiplies C_2 if suppressC2 is True
+        Default: 0.23 # from Tegmark et. al. 2003, figure 13 (WMAP)
+      filterC2 : set to true to filter simulated CMBs after spice calculates
+        cut sky C_l.  Sims will pass filter if cut sky C_2 is below theoretical
+        C_2 * filtFactor.
+        Default: False
+      filtFactor: defines C_2 threshold for passing simulated CMBs
+        Default: 0.25
   """
 
   # load data
   ell,fullCl,primCl,lateCl,crossCl = gcp.loadCls(useCLASS=useCLASS,useLensing=useLensing,classCamb=classCamb)
 
   # fill beginning with zeros
-  startEll = ell[0]
+  startEll = int(ell[0])
   ell      = np.append(np.arange(startEll),ell)
   fullCl   = np.append(np.zeros(startEll),fullCl)
   primCl   = np.append(np.zeros(startEll),primCl)
@@ -356,8 +471,6 @@ def test(useCLASS=1,useLensing=0,classCamb=1,nSims=1000,lmax=100,lmin=2,
   crossCl  = np.append(np.zeros(startEll),crossCl)
 
   # suppress C_2 to see what happens in enesmble
-  suppressC2 = False
-  suppFactor = 0.23 # from Tegmark et. al. 2003, figure 13 (WMAP)
   if suppressC2:
     fullCl[2] *= suppFactor
     primCl[2] *= suppFactor
@@ -471,9 +584,28 @@ def test(useCLASS=1,useLensing=0,classCamb=1,nSims=1000,lmax=100,lmin=2,
   # get Jmn matrix for harmonic space S_{1/2} calc.
   myJmn = getJmn(lmax=lmax)
 
+  # set up ramdisk for SpICE
+  # super lame that spice needs to read/write from disk, but here goes...
+  RAMdisk     = '/Volumes/ramdisk/'
+  ClTempFile  = RAMdisk+'tempCl.fits'
+  mapTempFile = RAMdisk+'tempMap.fits'
+  mapDegFile  = RAMdisk+'smicaMapDeg.fits' # this should have been created by sims.getSMICA
+  maskDegFile = RAMdisk+'maskMapDeg.fits'  # this should have been created by sims.getSMICA
+  
+  # create RAM Disk for SpICE and copy these files there using bash
+  RAMsize = 4 #Mb
+  ramDiskOutput = subprocess.check_output('./ramdisk.sh create '+str(RAMsize), shell=True)
+  print ramDiskOutput
+  diskID = ramDiskOutput[31:41] # this might not grab the right part; works for '/dev/disk1'
+  subprocess.call('cp smicaMapDeg.fits '+RAMdisk, shell=True)
+  subprocess.call('cp maskMapDeg.fits ' +RAMdisk, shell=True)
+
+
   doTime = True # to time the run and print output
   startTime = time.time()
-  for nSim in range(nSims):
+  #for nSim in range(nSims):
+  nSim = 0
+  while nSim < nSims:
     print 'starting sim ',nSim+1, ' of ',nSims
     alm_prim,alm_late = hp.synalm((primCl,lateCl,crossCl),lmax=lmax,new=True)
 
@@ -483,50 +615,66 @@ def test(useCLASS=1,useLensing=0,classCamb=1,nSims=1000,lmax=100,lmin=2,
     Clsim_cros = hp.alm2cl(alm_prim,alm_late)
     Clsim_full = Clsim_prim + 2*Clsim_cros + Clsim_late
     # use Cl_sim_full to omit prim/late distinction for now
-    Clsim_full_sum += Clsim_full
 
-    # first without mask  
-    #   note: getCovar uses linspace in x for thetaArray
-    thetaArray,cArray = getCovar(ell[:lmax+1],Clsim_full[:lmax+1],theta_i=theta_i,
-                                  theta_f=theta_f,nSteps=nSteps,lmin=lmin)
-    covEnsembleFull[nSim] = cArray
-    covTheta = thetaArray
 
-    # S_{1/2}
-    sEnsembleFull[nSim] = np.dot(Clsim_full[lmin:],np.dot(myJmn[lmin:,lmin:],Clsim_full[lmin:]))
-
-    # now with a mask
-    # should have default RING ordering
-    # pixel window and beam already accounted for in true Cls
+    # start with a mask 
+    #   -> for optional C2 filtering based on cut sky map
+    #   alm2map should create map with default RING ordering
+    #   pixel window and beam already accounted for in true Cls
     #mapSim = hp.alm2map(alm_prim+alm_late,myNSIDE,lmax=lmax,pixwin=True,sigma=5./60*np.pi/180)
     mapSim = hp.alm2map(alm_prim+alm_late,myNSIDE,lmax=lmax)
 
-    # super lame that spice needs to read/write from disk, but here goes...
-    mapTempFile = 'tempMap.fits'
-    ClTempFile  = 'tempCl.fits'
-    maskDegFile = 'maskMapDeg.fits' # this should have been created by getSMICA
     hp.write_map(mapTempFile,mapSim)
     ispice(mapTempFile,ClTempFile,maskfile1=maskDegFile,subav="YES",subdipole="YES")
     Cl_masked = hp.read_cl(ClTempFile)
     ell2 = np.arange(Cl_masked.shape[0])
-    #   note: getCovar uses linspace in x for thetaArray
-    thetaArray,cArray2 = getCovar(ell2[:lmax+1],Cl_masked[:lmax+1],theta_i=theta_i,
-                                   theta_f=theta_f,nSteps=nSteps,lmin=lmin)
-    covEnsembleCut[nSim] = cArray2
     
-    # S_{1/2}
-    sEnsembleCut[nSim] = np.dot(Cl_masked[lmin:lmax+1],np.dot(myJmn[lmin:,lmin:],Cl_masked[lmin:lmax+1]))
+    # Check for low power of cut sky C_2
+    #   with filterC2=True, takes ~5min for 100 sims
+    if (filterC2 == True and fullCl[2]*filtFactor > Cl_masked[2]) or filterC2 == False:
 
-    doPlot = False#True
-    if doPlot:
-      plt.plot(thetaArray,cArray)
-      plt.xlabel('theta (degrees)')
-      plt.ylabel('C(theta)')
-      plt.title('covariance of simulated CMB')
-      plt.show()
+      #   note: getCovar uses linspace in x for thetaArray
+      thetaArray,cArray2 = getCovar(ell2[:lmax+1],Cl_masked[:lmax+1],theta_i=theta_i,
+                                     theta_f=theta_f,nSteps=nSteps,lmin=lmin)
+      covEnsembleCut[nSim] = cArray2
+    
+      # S_{1/2}
+      sEnsembleCut[nSim] = np.dot(Cl_masked[lmin:lmax+1],np.dot(myJmn[lmin:,lmin:],Cl_masked[lmin:lmax+1]))
 
+      doPlot = False#True
+      if doPlot:
+        plt.plot(thetaArray,cArray)
+        plt.xlabel('theta (degrees)')
+        plt.ylabel('C(theta)')
+        plt.title('covariance of CMB simulation '+str(nSim+1))
+        plt.show()
+
+
+      # now without the mask
+      # uses the same sims that passed the C2 filter
+      Clsim_full_sum += Clsim_full
+      
+      #   note: getCovar uses linspace in x for thetaArray
+      thetaArray,cArray = getCovar(ell[:lmax+1],Clsim_full[:lmax+1],theta_i=theta_i,
+                                    theta_f=theta_f,nSteps=nSteps,lmin=lmin)
+      covEnsembleFull[nSim] = cArray
+      covTheta = thetaArray
+
+      # S_{1/2}
+      sEnsembleFull[nSim] = np.dot(Clsim_full[lmin:],np.dot(myJmn[lmin:,lmin:],Clsim_full[lmin:]))
+
+
+
+
+      nSim +=1
 
   if doTime: print 'time elapsed: ',int((time.time()-startTime)/60.),' minutes'
+  
+  # free the RAM used by SpICE's RAM disk
+  ramDiskOutput = subprocess.check_output('./ramdisk.sh delete '+diskID, shell=True)
+  print ramDiskOutput
+
+
   avgEnsembleFull = np.average(covEnsembleFull, axis = 0)
   stdEnsembleFull = np.std(covEnsembleFull, axis = 0)
   # do I need a better way to describe confidence interval?
@@ -534,6 +682,18 @@ def test(useCLASS=1,useLensing=0,classCamb=1,nSims=1000,lmax=100,lmin=2,
   stdEnsembleCut = np.std(covEnsembleCut, axis = 0)
 
   Clsim_full_avg = Clsim_full_sum / nSims
+
+
+  # save results
+  saveFile1 = "simStatResultC.npy"
+  np.save(saveFile1,np.vstack((thetaArray,avgEnsembleFull,stdEnsembleFull,
+                               avgEnsembleCut,stdEnsembleCut)) )
+  saveFile2 = "simStatC_SMICA.npy"
+  np.save(saveFile2,np.vstack((thetaArray2sp,C_SMICAsp,C_SMICAmaskedsp)) )
+  
+  saveFile3 = "simStatResultS.npy"
+  np.save(saveFile3,np.vstack(( np.hstack((np.array(S_SMICAnomasksp),sEnsembleFull)),
+                                np.hstack((np.array(S_SMICAmaskedsp),sEnsembleCut)) )) )
 
   doPlot = True
   if doPlot:
@@ -544,53 +704,7 @@ def test(useCLASS=1,useLensing=0,classCamb=1,nSims=1000,lmax=100,lmin=2,
     plt.legend()
     plt.show()
 
-    print 'plotting correlation functions... '
-    # first the whole sky statistics
-    plt.plot(thetaArray,avgEnsembleFull,label='sim. ensemble average (no mask)')
-    plt.fill_between(thetaArray,avgEnsembleFull+stdEnsembleFull,
-                     avgEnsembleFull-stdEnsembleFull,alpha=0.25,
-                     label='simulation 1sigma envelope')
-    plt.plot(thetaArray2,C_SMICA,label='SMICA R2 (inpainted,anafast)')
-    plt.plot(thetaArray2sp,C_SMICAsp,label='SMICA R2 (inpainted,spice)')
-
-    plt.xlabel('theta (degrees)')
-    plt.ylabel('C(theta)')
-    plt.title('whole sky covariance of '+str(nSims)+' simulated CMBs, lmax='+str(lmax))
-    plt.ylim([-500,1000])
-    plt.plot([0,180],[0,0]) #horizontal line
-    plt.legend()
-    plt.show()
-
-    # now the cut sky
-    plt.plot(thetaArray,avgEnsembleCut,label='sim. ensemble average (masked)')
-    plt.fill_between(thetaArray,avgEnsembleCut+stdEnsembleCut,
-                     avgEnsembleCut-stdEnsembleCut,alpha=0.25,
-                     label='simulation 1sigma envelope')
-    plt.plot(thetaArray2,C_SMICAmasked,label='SMICA R2 (masked ,anafast)')
-    plt.plot(thetaArray2sp,C_SMICAmaskedsp,label='SMICA R2 (masked ,spice)')
-    
-    plt.xlabel('theta (degrees)')
-    plt.ylabel('C(theta)')
-    plt.title('cut sky covariance of '+str(nSims)+' simulated CMBs, lmax='+str(lmax))
-    plt.ylim([-500,1000])
-    plt.plot([0,180],[0,0]) #horizontal line
-    plt.legend()
-    plt.show()
-
-    print 'plotting S_{1/2} distributions... '
-    myBins = np.logspace(2,7,100)
-    plt.axvline(x=S_SMICAnomasksp,color='b',linewidth=3,label='SMICA inpainted')
-    plt.axvline(x=S_SMICAmaskedsp,color='g',linewidth=3,label='SMICA masked')
-    plt.hist(sEnsembleFull,bins=myBins,histtype='step',label='full sky')
-    plt.hist(sEnsembleCut, bins=myBins,histtype='step',label='cut sky')
-
-    plt.gca().set_xscale("log")
-    plt.legend()
-    plt.xlabel('S_{1/2} (microK^4)')
-    plt.ylabel('Counts')
-    plt.title('S_{1/2} of '+str(nSims)+' simulated CMBs')
-    plt.show()
-
+    makePlots(saveFile1=saveFile1,saveFile2=saveFile2,saveFile3=saveFile3)
 
   # S_{1/2} output
   print ''

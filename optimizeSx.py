@@ -23,6 +23,7 @@ Modification History:
   Added optimization for SMICA values by putting it into the ensemble;
     Added switch for suppressC2; ZK, 2016.09.20
   Added RAM Disk to speed up SpICE calls; ZK, 2016.09.23
+  Switched to useLensing=1 in loadCls; ZK, 2016.10.07
   
 """
 
@@ -84,7 +85,7 @@ class Jmn():
 ################################################################################
 # testing code
 
-def test(useCLASS=1,useLensing=0,classCamb=1,nSims=1000,lmax=100,lmin=2,
+def test(useCLASS=1,useLensing=1,classCamb=1,nSims=1000,lmax=100,lmin=2,
          newSMICA=False,newDeg=False,suppressC2=False,suppFactor=0.23):
   """
     code for testing the other functions in this module
@@ -95,7 +96,7 @@ def test(useCLASS=1,useLensing=0,classCamb=1,nSims=1000,lmax=100,lmin=2,
         Note: CAMB results include primary in ISWin and ISWout (not as intended)
         default: 1
       useLensing: set to 1 to use lensed Cl, 0 for non-lensed
-        default: 0
+        default: 1
       classCamb: if 1: use the CAMB format of CLASS output, if 0: use CLASS format
         Note: parameter not used if useCLASS = 0
         default: 1

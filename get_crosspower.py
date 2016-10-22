@@ -18,6 +18,7 @@ Modification History:
   Written by Z Knight, 2016.06.08
   Added single spectrum testing; switched to synalm; ZK, 2016.06.27
   Added support for multiple Cl in showCl; ZK, 2016.07.01
+  Switched default in loadCls to useLensing=1; ZK, 2016.10.07
 
 """
 
@@ -83,7 +84,7 @@ def getAlms(A_lij,lmax=100):
     alm_late[index] = aDotZeta[1]
   return alm_prim,alm_late
 
-def loadCls(useCLASS=1,useLensing=0,classCamb=1,doPlot=False):
+def loadCls(useCLASS=1,useLensing=1,classCamb=1,doPlot=False):
   """
   Purpose:
     for loading power spectra from CLASS output files
@@ -95,7 +96,7 @@ def loadCls(useCLASS=1,useLensing=0,classCamb=1,doPlot=False):
         Note: CAMB results include primary in ISWin and ISWout (not as intended)
         default: 1
     useLensing: set to 1 to use lensed Cl, 0 for non-lensed
-        default: 0
+        default: 1
     classCamb: if 1: use the CAMB format of CLASS output, if 0: use CLASS format
         Note: parameter not used if useCLASS = 0
         Also: the CLASS format option is not yet fully implemented

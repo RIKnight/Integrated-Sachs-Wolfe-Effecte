@@ -17,6 +17,7 @@ Outputs:
 Modification History:
   Largely copied from sim_stats; Z Knight, 2016.09.13
   Added [:lmax+1] to getCovar calls; ZK, 2016.09.14
+  Switched to useLensing=1 in loadCls; ZK, 2016.10.07
 
 """
 
@@ -54,7 +55,7 @@ def mf():
 ################################################################################
 # testing code
 
-def test(useCLASS=1,useLensing=0,classCamb=1,nSims=1000,lmax=3,lmin=2,
+def test(useCLASS=1,useLensing=1,classCamb=1,nSims=1000,lmax=3,lmin=2,
          newSMICA=True,newDeg=False):
   """
     code for testing the other functions in this module
@@ -65,7 +66,7 @@ def test(useCLASS=1,useLensing=0,classCamb=1,nSims=1000,lmax=3,lmin=2,
         Note: CAMB results include primary in ISWin and ISWout (not as intended)
         default: 1
       useLensing: set to 1 to use lensed Cl, 0 for non-lensed
-        default: 0
+        default: 1
       classCamb: if 1: use the CAMB format of CLASS output, if 0: use CLASS format
         Note: parameter not used if useCLASS = 0
         default: 1

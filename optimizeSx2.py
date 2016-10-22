@@ -10,8 +10,8 @@ Note:
     "the statistical significance of the absence of large-angle correlations 
      is not particularly dependent either on the precise value of either limit" 
      (of the |C(theta)|^2 integral)
-  This program copied from optimizeSx, and modified to call c programs for
-    nested looping
+  This program originally copied from optimizeSx, and modified to call c programs 
+    for nested looping
 Uses:
   healpy
   legprodint (legendre product integral)
@@ -24,71 +24,349 @@ Outputs:
 Modification History:
   Written by Z Knight, 2016.09.26
   Added S_x density and P histograms; ZK, 2016.09.30
+  Added 2d histograms; ZK, 2016.10.03
+  Extracted plotting to its own function; ZK, 2016.10.04
+  Narrowed range of x for searching for optimal P-values; ZK, 2016.10.06
+  Switched to useLensing=1 in loadCls; Added PvalPval function; ZK, 2016.10.07
+  Added filterC2 and filtFactor functionality; ZK, 2016.10.10
+  Added makeCornerPlotSmall function; ZK, 2016.10.20
   
 """
 
 import numpy as np
 import matplotlib.pyplot as plt
 import healpy as hp
-import time # for measuring duration
+import time               # for measuring duration
 from scipy.interpolate import interp1d
-import subprocess # for calling RAM Disk scripts
-import ctypes
-from numpy.ctypeslib import ndpointer
+import subprocess         # for calling RAM Disk scripts
+import ctypes                         # for calling c .so file
+from numpy.ctypeslib import ndpointer # for calling c .so file
+from matplotlib import cm # color maps for 2d histograms
+import corner             # for corner plot
 
 import get_crosspower as gcp # for loadCls
 from numpy.polynomial.legendre import legval # for C_l -> C(theta) conversion
 from numpy.polynomial.legendre import legfit # for C(theta) -> C_l conversion
-from ispice import ispice
-import legprodint
-import sim_stats as sims # for getSMICA and getCovar
+from ispice import ispice # for calculating C_l from map
+import legprodint         # for integral of product of legendre polynomials
+import sim_stats as sims  # for getSMICA and getCovar
 
 
-class Jmn():
+def PvalPval(saveFile="optSxResult.npy"):
   """
-  Purpose:
-    hold Jmn(x) for various x values and interpolate between them
-
-  Note:
-    I may drop this and do the interpolation with the S_x values instead
-
-
-  Procedure:
-    
-  Inputs:
-
-  Returns:
-    
-  """
-
-  def __init__(self,lmax=100,new=True):
-    if new:
-      print 'new Jmn init running'
-    else: 
-      print 'old Jmn init running'
-    
-    nVals = 11#101
-    self.Jmnx = np.empty([nVals,lmax+1,lmax+1])
-    self.xvalues = np.linspace(0.25,0.75,nVals)
-    for index, val in enumerate(self.xvalues):
-      self.Jmnx[index] = legprodint.getJmn(endX=val,lmax=lmax,doSave=False)
-
-  def getJmn(self,x):
-    """
+    Name:
+      PvalPval
     Purpose:
-      gets (interpolates?) Jmn(x)
-    """
-    print 'getJmn does not yet interpolate'
+      calculate the p-value of the p-value
+    Inputs:
+      saveFile: name of a numpy file containing 3*(nSims+1) element array
+        3 rows: PvalMinima,XvalMinima,SxEnsembleMin
+        fisrt (0th) column: SMICA values
+        the other columns: nSims
+        Default: optSxResult.npy
+    Returns:
+      nothing, but prints result
+  """
+  
+  # load results
+  myPX = np.load(saveFile)
+  PvalMinima = myPX[0]
 
-    return self.Jmnx
+  nUnder = 0 # will also include nEqual
+  nOver = 0
+  Psmica = PvalMinima[0]
+  print 'P-value for ensemble ',saveFile,': ',Psmica
+  for Pval in (PvalMinima[1:]):
+    if Psmica >= Pval:
+      nUnder +=1
+    else:
+      nOver  +=1
+  return nUnder/float(nUnder+nOver)
 
+################################################################################
+# plotting
+
+def makeCornerPlotSmall(saveFile="optSxResult.npy",suppressC2=False):
+  """
+    Name:
+      makeCornerPlotSmall
+    Purpose:
+      plotting results of optimizeSx calculations
+      Makes a plot with fewer categories than makeCornerPlot
+    Inputs:
+      saveFile: name of a numpy file containing 3*(nSims+1) element array
+        3 rows: PvalMinima,XvalMinima,SxEnsembleMin
+        fisrt (0th) column: SMICA values
+        the other columns: nSims
+        Default: optSxResult.npy
+      suppressC2: set to True if this was used in creating data
+        Default: False
+    Returns:
+      nothing, but makes several plots
+  """
+
+  # load results
+  myPX = np.load(saveFile)
+  PvalMinima = myPX[0]
+  XvalMinima = myPX[1]
+  SxEnsembleMin = myPX[2]
+  nSims = myPX.shape[1]  # actually nSims+1 since SMICA is in 0 position
+
+  # S_x / delta_x
+  #SxEnsembleMinDensity = SxEnsembleMin/(XvalMinima + 1)
+
+  # reshape data for logarithmic P-value plot
+  toPlot = np.vstack((np.log10(SxEnsembleMin[1:]),#np.log10(SxEnsembleMinDensity[1:]),
+                      np.log10(PvalMinima[1:]),XvalMinima[1:]))
+  toPlot = toPlot.T
+
+  # make corner plot
+  figure = corner.corner(toPlot,labels=[r"$\log_{10} S_x$", #r"$\log_{10} (S_x / \Delta x)$",
+                                        r"$\log_{10}$ P-value",r"x value"],
+                         show_titles=False,
+                         truths=[np.log10(SxEnsembleMin[0]),#maknp.log10(SxEnsembleMinDensity[0]),
+                                 np.log10(PvalMinima[0]),XvalMinima[0]]  )
+  plt.show()
+
+
+def makeCornerPlot(saveFile="optSxResult.npy",suppressC2=False):
+  """
+    Name:
+      makeCornerPlot
+    Purpose:
+      plotting results of optimizeSx calculations
+    Inputs:
+      saveFile: name of a numpy file containing 3*(nSims+1) element array
+        3 rows: PvalMinima,XvalMinima,SxEnsembleMin
+        fisrt (0th) column: SMICA values
+        the other columns: nSims
+        Default: optSxResult.npy
+      suppressC2: set to True if this was used in creating data
+        Default: False
+    Returns:
+      nothing, but makes several plots
+  """
+
+  # load results
+  myPX = np.load(saveFile)
+  PvalMinima = myPX[0]
+  XvalMinima = myPX[1]
+  SxEnsembleMin = myPX[2]
+  nSims = myPX.shape[1]  # actually nSims+1 since SMICA is in 0 position
+
+  # S_x / delta_x
+  SxEnsembleMinDensity = SxEnsembleMin/(XvalMinima + 1)
+
+  # reshape data for logarithmic P-value plot
+  toPlot = np.vstack((np.log10(SxEnsembleMin[1:]),np.log10(SxEnsembleMinDensity[1:]),
+                      np.log10(PvalMinima[1:]),XvalMinima[1:]))
+  toPlot = toPlot.T
+
+  # make corner plot
+  figure = corner.corner(toPlot,labels=[r"$\log_{10} S_x$", r"$\log_{10} (S_x / \Delta x)$",
+                                        r"$\log_{10}$ P-value",r"x value"],
+                         show_titles=False,
+                         truths=[np.log10(SxEnsembleMin[0]),np.log10(SxEnsembleMinDensity[0]),
+                                 np.log10(PvalMinima[0]),XvalMinima[0]]  )
+  plt.show()
+
+  """
+  # reshape data for linear P-value plot
+  toPlot = np.vstack((np.log10(SxEnsembleMin[1:]),np.log10(SxEnsembleMinDensity[1:]),
+                      PvalMinima[1:],XvalMinima[1:]))
+  toPlot = toPlot.T
+
+  # make corner plot
+  figure = corner.corner(toPlot,labels=[r"$\log_{10} S_x$", r"$\log_{10} (S_x / \Delta x)$",
+                                        r"P-value",r"x value"],
+                         show_titles=False,
+                         truths=[np.log10(SxEnsembleMin[0]),np.log10(SxEnsembleMinDensity[0]),
+                                 PvalMinima[0],XvalMinima[0]]  )
+  plt.show()
+  """
+
+
+def makePlots(saveFile="optSxResult.npy",suppressC2=False):
+  """
+    Name:
+      makePlots
+    Purpose:
+      plotting results of optimizeSx calculations
+    Inputs:
+      saveFile: name of a numpy file containing 3*(nSims+1) element array
+        3 rows: PvalMinima,XvalMinima,SxEnsembleMin
+        fisrt (0th) column: SMICA values
+        the other columns: nSims
+        Default: optSxResult.npy
+      suppressC2: set to True if this was used in creating data
+        Default: False
+    Returns:
+      nothing, but makes several plots
+  """
+
+  # load results
+  myPX = np.load(saveFile)
+  PvalMinima = myPX[0]
+  XvalMinima = myPX[1]
+  SxEnsembleMin = myPX[2]
+  nSims = myPX.shape[1]  # actually nSims+1 since SMICA is in 0 position
+
+  # S_x / delta_x
+  SxEnsembleMinDensity = SxEnsembleMin/(XvalMinima + 1)
+
+
+  print 'plotting S_x distribution... '
+  myBinsS = np.logspace(0,6,100)
+  plt.axvline(x=SxEnsembleMin[0],color='g',linewidth=3,label='SMICA masked')
+  plt.hist(SxEnsembleMin[1:], bins=myBinsS,histtype='step',label='cut sky')
+                      # [1:] to omit SMICA value
+  plt.gca().set_xscale("log")
+  #plt.legend()
+  plt.xlabel('S_x (microK^4)')
+  plt.ylabel('Counts')
+  if suppressC2:
+    plt.title('S_x of '+str(nSims-1)+' simulated CMBs, C_2 suppressed') 
+                                #-1 due to SMICA in zero position
+  else:
+    plt.title('S_x of '+str(nSims-1)+' simulated CMBs') 
+                                #-1 due to SMICA in zero position
+  plt.show()
+
+  print 'plotting S_x density distribution... '
+  myBinsS = np.logspace(1,7,100)
+  plt.axvline(x=SxEnsembleMinDensity[0],color='g',linewidth=3,label='SMICA masked')
+  plt.hist(SxEnsembleMinDensity[1:], bins=myBinsS,histtype='step',label='cut sky')
+  plt.gca().set_xscale("log")
+  #plt.legend()
+  plt.xlabel('S_x / delta_x (microK^4)')
+  plt.ylabel('Counts')
+  if suppressC2:
+    plt.title('S_x / delta_x of '+str(nSims-1)+' simulated CMBs, C_2 suppressed') 
+  else:
+    plt.title('S_x / delta_x of '+str(nSims-1)+' simulated CMBs') 
+  plt.show()
+
+  print 'plotting P-value distribution (logarithmic)... '
+  myBinsP = np.logspace(-3,0,100)
+  myUniform = np.linspace(0,1,nSims) # for comparison to uniform distribution
+  plt.axvline(x=PvalMinima[0],color='g',linewidth=3,label='SMICA masked')
+  plt.hist(PvalMinima[1:], bins=myBinsP,histtype='step',label='cut sky')
+  plt.hist(myUniform,bins=myBinsP,histtype='step',label='uniform dist.')
+  plt.gca().set_xscale("log")
+  #plt.legend()
+  plt.xlabel('P-value')
+  plt.ylabel('Counts')
+  if suppressC2:
+    plt.title('P-value of S_x of '+str(nSims-1)+' simulated CMBs, C_2 suppressed') 
+  else:
+    plt.title('P-value of S_x of '+str(nSims-1)+' simulated CMBs') 
+  plt.show()
+
+  """
+  print 'plotting P-value distribution (linear)... '
+  myBinsP2 = np.linspace(0,1,100)
+  myUniform = np.linspace(0,1,nSims) # for comparison to uniform distribution
+  plt.axvline(x=PvalMinima[0],color='g',linewidth=3,label='SMICA masked')
+  plt.hist(PvalMinima[1:], bins=myBinsP2,histtype='step',label='cut sky')
+  plt.hist(myUniform,bins=myBinsP2,histtype='step',label='uniform dist.')
+  #plt.gca().set_xscale("log")
+  #plt.legend()
+  plt.xlabel('P-value')
+  plt.ylabel('Counts')
+  if suppressC2:
+    plt.title('P-value of S_x of '+str(nSims-1)+' simulated CMBs, C_2 suppressed') 
+  else:
+    plt.title('P-value of S_x of '+str(nSims-1)+' simulated CMBs') 
+  plt.show()
+  """
+
+  print 'plotting x distribution... '
+  myBinsX = np.linspace(-1,1,100)
+  plt.axvline(x=XvalMinima[0],color='g',linewidth=3,label='SMICA masked')
+  plt.hist(XvalMinima[1:], bins=myBinsX,histtype='step',label='cut sky')
+  plt.xlabel('x value')
+  plt.ylabel('Counts')
+  if suppressC2:
+    plt.title('x value of S_x of '+str(nSims-1)+' simulated CMBs, C_2 suppressed') 
+  else:
+    plt.title('x value of S_x of '+str(nSims-1)+' simulated CMBs') 
+  plt.show()
+
+
+  print 'and now the 2d histograms... '
+  log10SxEnsembleMin = np.log10(SxEnsembleMin)
+  log10SxEnsembleMinDensity = np.log10(SxEnsembleMinDensity)
+  log10PvalMinima = np.log10(PvalMinima)
+  myBinsLog10S0 = np.linspace(0,6,100)
+  myBinsLog10S1 = np.linspace(1,7,100)
+  myBinsLog10P = np.linspace(-3,0,100)
+  myBinsX = np.linspace(-1,1,100)
+  cmap = cm.magma#Greens#Blues
+
+  # SxEnsembleMin vs. XvalMinima
+  plt.hist2d(log10SxEnsembleMin[1:],XvalMinima[1:],
+      bins=[myBinsLog10S0,myBinsX],cmax=10,cmap=cmap)
+  plt.plot(log10SxEnsembleMin[0],XvalMinima[0],'ro')
+  plt.colorbar()
+  plt.xlabel('log10(S_x)')
+  plt.ylabel('X value')
+  plt.title('S_x vs. X value')
+  plt.show()
+  # SxEnsembleMinDensity vs. XvalMinima
+  plt.hist2d(log10SxEnsembleMinDensity[1:],XvalMinima[1:],
+      bins=[myBinsLog10S1,myBinsX],cmax=10,cmap=cmap)
+  plt.plot(log10SxEnsembleMinDensity[0],XvalMinima[0],'ro')
+  plt.colorbar()
+  plt.xlabel('log10(S_x/delta_x)')
+  plt.ylabel('X value')
+  plt.title('S_x/delta_x vs. X value')
+  plt.show()
+  # PvalMinima vs. XvalMinima
+  plt.hist2d(log10PvalMinima[1:],XvalMinima[1:],
+      bins=[myBinsLog10P,myBinsX],cmax=10,cmap=cmap)
+  plt.plot(log10PvalMinima[0],XvalMinima[0],'ro')
+  plt.colorbar()
+  plt.xlabel('log10(P-value)')
+  plt.ylabel('X value')
+  plt.title('P value vs. X value')
+  plt.show()
+
+  # SxEnsembleMin vs. PvalMinima
+  plt.hist2d(log10SxEnsembleMin[1:],log10PvalMinima[1:],
+      bins=[myBinsLog10S0,myBinsLog10P],cmax=50,cmap=cmap)
+  plt.plot(log10SxEnsembleMin[0],log10PvalMinima[0],'ro')
+  plt.colorbar()
+  plt.xlabel('log10(S_x)')
+  plt.ylabel('log10(P-value)')
+  plt.title('S_x vs. P-value')
+  plt.show()
+  # SxEnsembleMinDensity vs. PvalMinima
+  plt.hist2d(log10SxEnsembleMinDensity[1:],log10PvalMinima[1:],
+      bins=[myBinsLog10S1,myBinsLog10P],cmax=50,cmap=cmap)
+  plt.plot(log10SxEnsembleMinDensity[0],log10PvalMinima[0],'ro')
+  plt.colorbar()
+  plt.xlabel('log10(S_x/delta_x)')
+  plt.ylabel('log10(P-value)')
+  plt.title('S_x/delta_x vs. P-value')
+  plt.show()
+
+  # SxEnsembleMin vs. SxEnsembleMinDensity
+  plt.hist2d(log10SxEnsembleMin[1:],log10SxEnsembleMinDensity[1:],
+      bins=[myBinsLog10S0,myBinsLog10S1],cmax=50,cmap=cmap)
+  plt.plot(log10SxEnsembleMin[0],log10SxEnsembleMinDensity[0],'ro')
+  plt.colorbar()
+  plt.xlabel('log10(S_x)')
+  plt.ylabel('log10(S_x/delta_x)')
+  plt.title('S_x vs. S_x/delta_x')
+  plt.show()
 
 
 ################################################################################
 # testing code
 
-def test(useCLASS=1,useLensing=0,classCamb=1,nSims=1000,lmax=100,lmin=2,
-         newSMICA=False,newDeg=False,suppressC2=False,suppFactor=0.23):
+def test(useCLASS=1,useLensing=1,classCamb=1,nSims=1000,lmax=100,lmin=2,
+         newSMICA=False,newDeg=False,suppressC2=False,suppFactor=0.23,
+         filterC2=False,filtFactor=0.25):
   """
     code for testing the other functions in this module
     Inputs:
@@ -98,7 +376,7 @@ def test(useCLASS=1,useLensing=0,classCamb=1,nSims=1000,lmax=100,lmin=2,
         Note: CAMB results include primary in ISWin and ISWout (not as intended)
         default: 1
       useLensing: set to 1 to use lensed Cl, 0 for non-lensed
-        default: 0
+        default: 1
       classCamb: if 1: use the CAMB format of CLASS output, if 0: use CLASS format
         Note: parameter not used if useCLASS = 0
         default: 1
@@ -113,11 +391,17 @@ def test(useCLASS=1,useLensing=0,classCamb=1,nSims=1000,lmax=100,lmin=2,
       newDeg: set to True to recalculate map and mask degredations
         (only if newSMICA is also True)
         default: False
-      suppressC2: set to True to suppress theoretical C_2 by suppFactor
-        before creating a_lm.s
+      suppressC2: set to True to suppress theoretical C_2 (quadrupole) by 
+        suppFactor before creating a_lm.s
         Default: False
       suppFactor: multiplies C_2 if suppressC2 is True
         Default: 0.23 # from Tegmark et. al. 2003, figure 13 (WMAP)
+      filterC2 : set to true to filter simulated CMBs after spice calculates
+        cut sky C_l.  Sims will pass filter if cut sky C_2 is below theoretical
+        C_2 * filtFactor.
+        Default: False
+      filtFactor: defines C_2 threshold for passing simulated CMBs
+        Default: 0.25
   """
 
   ##############################################################################
@@ -136,8 +420,6 @@ def test(useCLASS=1,useLensing=0,classCamb=1,nSims=1000,lmax=100,lmin=2,
   crossCl  = np.append(np.zeros(startEll),crossCl)
 
   # suppress C_2 to see what happens in enesmble
-  #suppressC2 = False
-  #suppFactor = 0.23 # from Tegmark et. al. 2003, figure 13 (WMAP)
   if suppressC2:
     fullCl[2] *= suppFactor
     primCl[2] *= suppFactor
@@ -166,7 +448,7 @@ def test(useCLASS=1,useLensing=0,classCamb=1,nSims=1000,lmax=100,lmin=2,
 
 
   ##############################################################################
-  # load SMICA data, converted to C(theta), via SpICE
+  # load SMICA data, converted to C_l, via SpICE
 
   if newSMICA:
     theta_i = 0.0 #degrees
@@ -211,7 +493,9 @@ def test(useCLASS=1,useLensing=0,classCamb=1,nSims=1000,lmax=100,lmin=2,
 
   doTime = True # to time the run and print output
   startTime = time.time()
-  for nSim in range(nSims):
+  #for nSim in range(nSims):
+  nSim = 0
+  while nSim < nSims:
     print 'starting masked Cl sim ',nSim+1, ' of ',nSims
     alm_prim,alm_late = hp.synalm((primCl,lateCl,crossCl),lmax=lmax,new=True)
     mapSim = hp.alm2map(alm_prim+alm_late,myNSIDE,lmax=lmax)
@@ -220,10 +504,16 @@ def test(useCLASS=1,useLensing=0,classCamb=1,nSims=1000,lmax=100,lmin=2,
     ispice(mapTempFile,ClTempFile,maskfile1=maskDegFile,subav="YES",subdipole="YES")
     ClEnsembleCut[nSim] = hp.read_cl(ClTempFile)
 
-    doPlot = False#True
-    if doPlot:
-      gcp.showCl(simEll[:lmax+1],ClEnsembleCut[nSim,:lmax+1],
-                  title='power spectrum of simulation '+str(nSim+1))
+    # Check for low power of cut sky C_2
+    if (filterC2 == True and fullCl[2]*filtFactor > ClEnsembleCut[nSim,2]) or filterC2 == False:
+
+      doPlot = False#True
+      if doPlot:
+        gcp.showCl(simEll[:lmax+1],ClEnsembleCut[nSim,:lmax+1],
+                    title='power spectrum of simulation '+str(nSim+1))
+
+      nSim +=1
+
 
   timeInterval1 = time.time()-startTime
   if doTime: print 'time elapsed: ',int(timeInterval1/60.),' minutes'
@@ -313,11 +603,20 @@ def test(useCLASS=1,useLensing=0,classCamb=1,nSims=1000,lmax=100,lmin=2,
   cOptSx.argtypes = [ndpointer(ctypes.c_double, flags="C_CONTIGUOUS"),
                      ctypes.c_size_t,
                      ndpointer(ctypes.c_double, flags="C_CONTIGUOUS",ndim=2,shape=(nSims,nXvals)),
-                     ctypes.c_size_t, ctypes.c_int,
+                     ctypes.c_size_t, ctypes.c_double, ctypes.c_double, ctypes.c_int,
                      ndpointer(ctypes.c_double, flags="C_CONTIGUOUS"),
                      ndpointer(ctypes.c_double, flags="C_CONTIGUOUS")]
   
+  xStart = -1.0
+  xEnd = 1.0
   nSearch = 181 # same num as nXvals for now, but spaced equally in x, not theta
+  #xStart = -0.5
+  #xEnd = 0.8
+  #nSearch = 131
+  #xStart = -0.4586 # where C(theta)_true crosses 0
+  #xEnd = 0.7537    # where C(theta)_true crosses 0
+  #nSearch = 131
+  #nSearch = 261
   PvalMinima = np.empty(nSims) # for return values
   XvalMinima = np.empty(nSims) # for return values
 
@@ -325,20 +624,10 @@ def test(useCLASS=1,useLensing=0,classCamb=1,nSims=1000,lmax=100,lmin=2,
   startTime = time.time()
   #print  SxValsArray[5]
   #raw_input("that was python's SxValsArray[5].  Press enter.")
-  cOptSx(xVals,nXvals,SxValsArray,nSims,nSearch,PvalMinima,XvalMinima)
+  cOptSx(xVals,nXvals,SxValsArray,nSims,xStart,xEnd,nSearch,PvalMinima,XvalMinima)
   timeInterval2 = time.time()-startTime
   if doTime: print 'time elapsed: ',int(timeInterval2/60.),' minutes'
 
-
-  ##############################################################################
-  # save results
-  saveFile = "optSxResult2.npy"
-  np.save(saveFile,np.vstack((PvalMinima,XvalMinima)))
-
-  # or load results?
-  #myPX = np.load(saveFile)
-  #PvalMinima = myPX[0]
-  #XvalMinima = myPX[1]
 
   ##############################################################################
   # create distribution of S(XvalMinima)
@@ -346,72 +635,35 @@ def test(useCLASS=1,useLensing=0,classCamb=1,nSims=1000,lmax=100,lmin=2,
   SxEnsembleMin = np.empty(nSims)
   for nSim in range(nSims):
     SxEnsembleMin[nSim] = SofXList[nSim](XvalMinima[nSim])
-  print XvalMinima
+  #print XvalMinima
   #print SxEnsembleMin
 
-  # now S_x / delta_x
-  SxEnsembleMinDensity = SxEnsembleMin/(XvalMinima + 1)
 
   # extract SMICA results
-  Ssmica = SxEnsembleMin[0]
-  SsmicaDensity = SxEnsembleMinDensity[0]
-  Psmica = PvalMinima[0]
+  #Ssmica = SxEnsembleMin[0]
+  #SsmicaDensity = SxEnsembleMinDensity[0]
+  #Psmica = PvalMinima[0]
+
+
+  ##############################################################################
+  # save results
+  saveFile = "optSxResult.npy"
+  np.save(saveFile,np.vstack((PvalMinima,XvalMinima,SxEnsembleMin)))
+
 
   ##############################################################################
   # plot/print results
+  makePlots(saveFile=saveFile,suppressC2=suppressC2)
+  makeCornerPlot(saveFile=saveFile,suppressC2=suppressC2)
 
-  
-  print 'plotting S_x distribution... '
-  myBins = np.logspace(0,6,100)
-  plt.axvline(x=Ssmica,color='g',linewidth=3,label='SMICA masked')
-  plt.hist(SxEnsembleMin[1:], bins=myBins,histtype='step',label='cut sky')
-                      # [1:] to omit SMICA value
-  plt.gca().set_xscale("log")
-  #plt.legend()
-  plt.xlabel('S_x (microK^4)')
-  plt.ylabel('Counts')
-  if suppressC2:
-    plt.title('S_x of '+str(nSims-1)+' simulated CMBs, C_2 suppressed') 
-                                #-1 due to SMICA in zero position
-  else:
-    plt.title('S_x of '+str(nSims-1)+' simulated CMBs') 
-                                #-1 due to SMICA in zero position
-  plt.show()
-
-  print 'plotting S_x density distribution... '
-  myBins = np.logspace(1,7,100)
-  plt.axvline(x=SsmicaDensity,color='g',linewidth=3,label='SMICA masked')
-  plt.hist(SxEnsembleMinDensity[1:], bins=myBins,histtype='step',label='cut sky')
-  plt.gca().set_xscale("log")
-  #plt.legend()
-  plt.xlabel('S_x / delta_x (microK^4)')
-  plt.ylabel('Counts')
-  if suppressC2:
-    plt.title('S_x / delta_x of '+str(nSims-1)+' simulated CMBs, C_2 suppressed') 
-  else:
-    plt.title('S_x / delta_x of '+str(nSims-1)+' simulated CMBs') 
-  plt.show()
-
-  print 'plotting P-value distribution... '
-  myBins = np.logspace(-3,0,100)
-  plt.axvline(x=Psmica,color='g',linewidth=3,label='SMICA masked')
-  plt.hist(PvalMinima[1:], bins=myBins,histtype='step',label='cut sky')
-  plt.gca().set_xscale("log")
-  #plt.legend()
-  plt.xlabel('P-value')
-  plt.ylabel('Counts')
-  if suppressC2:
-    plt.title('P-value of S_x of '+str(nSims-1)+' simulated CMBs, C_2 suppressed') 
-  else:
-    plt.title('P-value of S_x of '+str(nSims-1)+' simulated CMBs') 
-  plt.show()
-
+  pv = PvalPval(saveFile=saveFile)
   print ' '
   print 'nSims = ',nSims-1
   print 'time interval 1: ',timeInterval1,'s, time interval 2: ',timeInterval2,'s'
   print '  => ',timeInterval1/(nSims-1),' s/sim, ',timeInterval2/(nSims-1),' s/sim'
-  print 'SMICA optimized S_x: S = ',Ssmica,', for x = ',XvalMinima[0], \
+  print 'SMICA optimized S_x: S = ',SxEnsembleMin[0],', for x = ',XvalMinima[0], \
         ', with p-value ',PvalMinima[0]
+  print 'P-value of P-value for SMICA: ',pv
   print ' '
 
 

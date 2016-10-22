@@ -5,6 +5,9 @@
  * find global minimum for each Pval(x)
  *   -> can be used to create distribution S(xValMinima)
  *
+ * compile with:
+ *  gcc -O3 -fPIC -shared -o optimizeSx.so optimizeSx.c
+ *
  * Modification History:
  *  Written by Z Knight, 2016.09.26
  *  Corrected 2d array indexing problem in optSx variable SxVecs:
@@ -12,6 +15,7 @@
  *    python's ctypes ndpointer inadvertantly flattened the array.
  *    Fixed by rewriting to expect 1d array; ZK, 2016.09.28
  *    Modified xstart value to avoid oddness near x=-1.0; ZK, 2016.09.30
+ *    Added xStart and xEnd to optSx function to constrain search range; ZK, 2016.10.06
  *
  */
 
@@ -98,7 +102,7 @@ double PvalOfX(double xVal, size_t nSim, const double *xVec, const double *SxVec
 
 }
 
-void optSx(const double *xVec, size_t xSize, const double *SxVecs, size_t nSims, int nSearch, double *PvalMinima, double *XvalMinima)  {
+void optSx(const double *xVec, size_t xSize, const double *SxVecs, size_t nSims, double xStart, double xEnd, int nSearch, double *PvalMinima, double *XvalMinima)  {
   /*
    * Name:
    *  optSx
@@ -115,6 +119,11 @@ void optSx(const double *xVec, size_t xSize, const double *SxVecs, size_t nSims,
    *    This can be thought of as a 2d array, but really it's flattened into 1d.
    *    Its length is nSims*xSize; its index is nSim*xSize+nX
    *  nSims: the number of simulations (rows) in SxVecs
+   *  xStart: the start of the x range to search
+   *    must be >= -1 and < xEnd.  If -1 is entered, -0.999 will be used 
+   *      instead to avoid chaotic behavior of Pval(x) near x=-1
+   *  xEnd: the end of the x range to search
+   *    must be <= 1 and > xStart
    *  nSearch: the number of points to search for along x
    *  PvalMinima,XvalMinima: arrays of length nSims to contain P(x) and x values
    * Returns:
@@ -133,9 +142,13 @@ void optSx(const double *xVec, size_t xSize, const double *SxVecs, size_t nSims,
   //double myPvals[nSearch];
   double myPval;
   double myXvals[nSearch];
-  double xStart = -0.999; //-1.0; //start for range (-1 <= x <= 1)
+  //double xStart = -0.999; //-1.0; //start for range (-1 <= x <= 1)
+  if (xStart == -1) {
+    xStart = -0.999; //avoid chaotic Pval(x) near -1
+  }
+  double deltaX = xEnd - xStart;
   for (int n = 0; n < nSearch; n++) {
-    myXvals[n] = -1.0 + 2*(n/(double)(nSearch-1)); // don't use xStart here
+    myXvals[n] = xStart + deltaX*(n/(double)(nSearch-1));
   }
 
   //size_t nSim; // loop index
