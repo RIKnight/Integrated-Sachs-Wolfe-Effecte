@@ -30,6 +30,9 @@ Modification History:
   Switched to useLensing=1 in loadCls; Added PvalPval function; ZK, 2016.10.07
   Added filterC2 and filtFactor functionality; ZK, 2016.10.10
   Added makeCornerPlotSmall function; ZK, 2016.10.20
+  Modified for filtFactor range: filtFacLow and filtFacHigh; ZK, 2016.11.08
+  Added C2 Ensemble for calculation of C_2^LCDM,cut-sky p-value; ZK, 2016.11.09
+  Added doCovar option to test function; ZK, 2016.11.12
   
 """
 
@@ -85,6 +88,58 @@ def PvalPval(saveFile="optSxResult.npy"):
 
 ################################################################################
 # plotting
+
+def makeC2Plot(saveFile='optSxC2.npy'):
+  """
+    Name:
+      maceC2Plot
+    Purpose:
+      plot histogram of cut-sky C2 values and compare to SMICA C2 value
+    Inputs:
+      saveFile: the name of the file that C2 Ensemble is saved in
+      Must have SMICA value as 0th member of numpy array
+    Returns:
+      p-value of SMICA C2 power
+  """
+
+  # create markers
+  mCLASS_C2 = 1103.42
+  m10 = mCLASS_C2*0.1
+  m20 = mCLASS_C2*0.2
+
+  # load results
+  C2Ensemble = np.load(saveFile)
+  nSims = C2Ensemble.size-1 #-1 due to SMICA value in 0 position
+
+  # make plot
+  print 'Plotting C2 distribution...'
+  myBins = np.linspace(0,2500,100)
+  plt.axvline(x=C2Ensemble[0],color='g',linewidth=3,label='SMICA masked')
+  plt.axvline(x=mCLASS_C2,color='k',label='CLASS C_2')
+  plt.axvline(x=m10,      color='k',label='CLASS C_2 * 0.1')
+  plt.axvline(x=m20,      color='k',label='CLASS C_2 * 0.2')
+  plt.hist(C2Ensemble[1:], bins=myBins,histtype='step',label='cut-sky sim.s')
+                      # [1:] to omit SMICA value
+  #plt.gca().set_xscale("log")
+  plt.legend()
+  plt.xlabel(r'$C_2$ power $(\mu K^2)$')
+  plt.ylabel('Counts')
+  plt.title(r'$C_2$ of '+str(nSims)+' simulated CMBs') 
+  plt.show()
+
+  # find p-value
+  nUnder = 0
+  nOver = 0
+  C2smica = C2Ensemble[0]
+  for C2power in (C2Ensemble[1:]):
+    if C2smica >= C2power:
+      nUnder +=1
+    else:
+      nOver  +=1
+  pVal = nUnder/float(nUnder+nOver)
+
+  return pVal
+
 
 def makeCornerPlotSmall(saveFile="optSxResult.npy",suppressC2=False):
   """
@@ -366,7 +421,7 @@ def makePlots(saveFile="optSxResult.npy",suppressC2=False):
 
 def test(useCLASS=1,useLensing=1,classCamb=1,nSims=1000,lmax=100,lmin=2,
          newSMICA=False,newDeg=False,suppressC2=False,suppFactor=0.23,
-         filterC2=False,filtFactor=0.25):
+         filterC2=False,filtFacLow=0.1,filtFacHigh=0.2,doCovar=False):
   """
     code for testing the other functions in this module
     Inputs:
@@ -397,11 +452,14 @@ def test(useCLASS=1,useLensing=1,classCamb=1,nSims=1000,lmax=100,lmin=2,
       suppFactor: multiplies C_2 if suppressC2 is True
         Default: 0.23 # from Tegmark et. al. 2003, figure 13 (WMAP)
       filterC2 : set to true to filter simulated CMBs after spice calculates
-        cut sky C_l.  Sims will pass filter if cut sky C_2 is below theoretical
-        C_2 * filtFactor.
+        cut sky C_l.  Sims will pass filter if C_2 * filtFacLow < C_2^sim <
+        C_2 * filtFacHigh.
         Default: False
-      filtFactor: defines C_2 threshold for passing simulated CMBs
-        Default: 0.25
+      filtFacLow,filtFacHigh: defines C_2 range for passing simulated CMBs
+        Default: 0.1,0.2
+      doCovar: set to True to calculate C(theta) and S_{1/2} distritutions for ensemble
+        Note: meant to capture functionality from sim_stats.py; ZK 2016.11.13
+        Default: False
   """
 
   ##############################################################################
@@ -450,7 +508,7 @@ def test(useCLASS=1,useLensing=1,classCamb=1,nSims=1000,lmax=100,lmin=2,
   ##############################################################################
   # load SMICA data, converted to C_l, via SpICE
 
-  if newSMICA:
+  if newSMICA or doCovar:
     theta_i = 0.0 #degrees
     theta_f = 180.0 #degrees
     nSteps = 1800
@@ -479,17 +537,27 @@ def test(useCLASS=1,useLensing=1,classCamb=1,nSims=1000,lmax=100,lmin=2,
   ClsmicaCut = hp.read_cl(ClTempFile)
 
   # find S_{1/2} for SMICA.  Should actually optimize but see what happens here first.
-  #myJmn = legprodint.getJmn(endX=0.5,lmax=lmax,doSave=False)
-  #Ssmica = np.dot(ClsmicaCut[lmin:lmax+1],np.dot(myJmn[lmin:,lmin:],
-  #                ClsmicaCut[lmin:lmax+1]))*1e24 #K^4 to microK^4
+  if doCovar:
+    myJmn = legprodint.getJmn(endX=0.5,lmax=lmax,doSave=False)
+    #Ssmica = np.dot(ClsmicaCut[lmin:lmax+1],np.dot(myJmn[lmin:,lmin:],
+    #                ClsmicaCut[lmin:lmax+1]))*1e24 #K^4 to microK^4
 
 
   ##############################################################################
   # create ensemble of realizations and gather statistics
 
   spiceMax = myNSIDE*3 # should be lmax+1 for SpICE
-  ClEnsembleCut = np.zeros([nSims,spiceMax])
+  ClEnsembleCut  = np.zeros([nSims,spiceMax])
+  if doCovar:
+    ClEnsembleFull = np.zeros([nSims,lmax+1])
   simEll = np.arange(spiceMax)
+
+  # option for creating C(\theta) and S_{1/2} ensembles
+  if doCovar:
+    cEnsembleCut  = np.zeros([nSims,nSteps+1])
+    cEnsembleFull = np.zeros([nSims,nSteps+1])
+    sEnsembleCut  = np.zeros(nSims)
+    sEnsembleFull = np.zeros(nSims)
 
   doTime = True # to time the run and print output
   startTime = time.time()
@@ -500,17 +568,35 @@ def test(useCLASS=1,useLensing=1,classCamb=1,nSims=1000,lmax=100,lmin=2,
     alm_prim,alm_late = hp.synalm((primCl,lateCl,crossCl),lmax=lmax,new=True)
     mapSim = hp.alm2map(alm_prim+alm_late,myNSIDE,lmax=lmax)
     hp.write_map(mapTempFile,mapSim)
+    if doCovar:
+      ClEnsembleFull[nSim] = hp.alm2cl(alm_prim+alm_late)
 
     ispice(mapTempFile,ClTempFile,maskfile1=maskDegFile,subav="YES",subdipole="YES")
     ClEnsembleCut[nSim] = hp.read_cl(ClTempFile)
 
     # Check for low power of cut sky C_2
-    if (filterC2 == True and fullCl[2]*filtFactor > ClEnsembleCut[nSim,2]) or filterC2 == False:
+    if (filterC2 == True and fullCl[2]*filtFacHigh > ClEnsembleCut[nSim,2]
+                         and ClEnsembleCut[nSim,2] > fullCl[2]*filtFacLow) or filterC2 == False:
 
       doPlot = False#True
       if doPlot:
         gcp.showCl(simEll[:lmax+1],ClEnsembleCut[nSim,:lmax+1],
                     title='power spectrum of simulation '+str(nSim+1))
+
+      if doCovar:
+        #   note: getCovar uses linspace in x for thetaArray
+        thetaArray,cArray = sims.getCovar(simEll[:lmax+1],ClEnsembleCut[nSim,:lmax+1],
+                                  theta_i=theta_i,theta_f=theta_f,nSteps=nSteps,lmin=lmin)
+        cEnsembleCut[nSim] = cArray
+        thetaArray,cArray = sims.getCovar(simEll[:lmax+1],ClEnsembleFull[nSim,:lmax+1],
+                                  theta_i=theta_i,theta_f=theta_f,nSteps=nSteps,lmin=lmin)
+        cEnsembleFull[nSim] = cArray
+      
+        # S_{1/2}
+        sEnsembleCut[nSim]  = np.dot(ClEnsembleCut[nSim,lmin:lmax+1],
+                                     np.dot(myJmn[lmin:,lmin:],ClEnsembleCut[nSim,lmin:lmax+1]))
+        sEnsembleFull[nSim] = np.dot(ClEnsembleFull[nSim,lmin:lmax+1],
+                                     np.dot(myJmn[lmin:,lmin:],ClEnsembleFull[nSim,lmin:lmax+1]))
 
       nSim +=1
 
@@ -523,7 +609,11 @@ def test(useCLASS=1,useLensing=1,classCamb=1,nSims=1000,lmax=100,lmin=2,
   print ramDiskOutput
 
   # put SMICA in as 0th member of the ensemble; 1e12 to convert K^2 to microK^2
-  ClEnsembleCut = np.vstack((ClsmicaCut*1e12,ClEnsembleCut))
+  ClEnsembleCut   = np.vstack((ClsmicaCut*1e12,ClEnsembleCut))
+
+  #if doCovar: # actually i prob. don't want this, to match sim_stats data structure
+  #  cEnsembleCut  = np.vstack((C_SMICAmaskedsp,cEnsembleCut))
+  #  sEnsembleCut  = np.vstack((S_SMICAmaskedsp,sEnsembleCut))
   nSims += 1
 
   ##############################################################################
@@ -577,7 +667,9 @@ def test(useCLASS=1,useLensing=1,classCamb=1,nSims=1000,lmax=100,lmin=2,
       plt.plot(plotx,plotS,label='sim '+str(nSim+1))
       #plt.plot(xVals,SxValsArray[nSim],label='sim '+str(nSim+1))
     #plt.legend()
-    plt.title('S(x) for simulations')
+    plt.title('S(x) for '+str(nSims)+ 'simulations')
+    plt.xlabel('x')
+    plt.ylabel('S_x')
     plt.show()
 
 
@@ -635,26 +727,40 @@ def test(useCLASS=1,useLensing=1,classCamb=1,nSims=1000,lmax=100,lmin=2,
   SxEnsembleMin = np.empty(nSims)
   for nSim in range(nSims):
     SxEnsembleMin[nSim] = SofXList[nSim](XvalMinima[nSim])
-  #print XvalMinima
-  #print SxEnsembleMin
-
-
-  # extract SMICA results
-  #Ssmica = SxEnsembleMin[0]
-  #SsmicaDensity = SxEnsembleMinDensity[0]
-  #Psmica = PvalMinima[0]
 
 
   ##############################################################################
-  # save results
-  saveFile = "optSxResult.npy"
+  # save S_x, P(x), x results
+  saveFile  = "optSxResult.npy"
   np.save(saveFile,np.vstack((PvalMinima,XvalMinima,SxEnsembleMin)))
+  saveFileC2 = "optSxC2.npy"
+  np.save(saveFileC2,ClEnsembleCut[:,2]) #for C_2
 
+  # save C(theta) and S{1/2} results
+  if doCovar:
+    avgEnsembleFull = np.average(cEnsembleFull, axis = 0)
+    stdEnsembleFull = np.std(cEnsembleFull, axis = 0)
+    # do I need a better way to describe confidence interval?
+    avgEnsembleCut = np.average(cEnsembleCut, axis = 0)
+    stdEnsembleCut = np.std(cEnsembleCut, axis = 0)
+
+    saveFile1 = "simStatResultC.npy"
+    np.save(saveFile1,np.vstack((thetaArray,avgEnsembleFull,stdEnsembleFull,
+                                 avgEnsembleCut,stdEnsembleCut)) )
+    saveFile2 = "simStatC_SMICA.npy"
+    np.save(saveFile2,np.vstack((thetaArray2sp,C_SMICAsp,C_SMICAmaskedsp)) )
+    
+    saveFile3 = "simStatResultS.npy"
+    np.save(saveFile3,np.vstack(( np.hstack((np.array(S_SMICAnomasksp),sEnsembleFull)),
+                                  np.hstack((np.array(S_SMICAmaskedsp),sEnsembleCut)) )) )
 
   ##############################################################################
   # plot/print results
   makePlots(saveFile=saveFile,suppressC2=suppressC2)
   makeCornerPlot(saveFile=saveFile,suppressC2=suppressC2)
+  c2pval = makeC2Plot(saveFile=saveFileC2)
+  if doCovar:
+    sims.makePlots(saveFile1=saveFile1,saveFile2=saveFile2,saveFile3=saveFile3)
 
   pv = PvalPval(saveFile=saveFile)
   print ' '
@@ -664,6 +770,8 @@ def test(useCLASS=1,useLensing=1,classCamb=1,nSims=1000,lmax=100,lmin=2,
   print 'SMICA optimized S_x: S = ',SxEnsembleMin[0],', for x = ',XvalMinima[0], \
         ', with p-value ',PvalMinima[0]
   print 'P-value of P-value for SMICA: ',pv
+  print ' '
+  print 'p-value of C_2^SMICA in distribution: ',c2pval
   print ' '
 
 

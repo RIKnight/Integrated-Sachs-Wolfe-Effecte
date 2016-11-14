@@ -1,7 +1,7 @@
 #! /usr/bin/env python
 """
 Name:
-  optimizeSx  
+  optimizeSx1  
 Purpose:
   explore the presumed arbitrary cut off point for S_{1/2} by optimizing
     PTE(S_x) for random CMB realizations
@@ -279,7 +279,9 @@ def test(useCLASS=1,useLensing=1,classCamb=1,nSims=1000,lmax=100,lmin=2,
       plotS = SofXList[nSim](plotx)
       plt.plot(plotx,plotS,label='sim '+str(nSim+1))
     #plt.legend()
-    plt.title('S(x) for simulations')
+    plt.title('S(x) for '+str(nSims)+' simulations')
+    plt.xlabel('x')
+    plt.ylabel('S_x')
     plt.show()
 
 
@@ -340,8 +342,8 @@ def test(useCLASS=1,useLensing=1,classCamb=1,nSims=1000,lmax=100,lmin=2,
         #print 'nSim: ',nSim+1,', new x for minimum Pval: ',xVal
     #raw_input("Finished sim "+str(nSim+1)+" of "+str(nSims)+".  Press enter to continue")
 
-    doPlot = False#True
-    if doPlot and np.random.uniform() < 0.1: #randomly choose about 1/10 of them
+    doPlot = True#False#True
+    if doPlot: # and np.random.uniform() < 0.1: #randomly choose about 1/10 of them
       plt.plot(xVals,Pvals)
       plt.vlines(xValMinima[nSim],0,1)
       plt.xlabel('x = cos(theta), min at '+str(xValMinima[nSim]))

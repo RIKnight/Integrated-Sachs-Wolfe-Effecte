@@ -37,6 +37,9 @@ Modification History:
   Added suppressC2,suppFactor,filterC2,filtFactor to test function
     parameter list; implemented filterC2; 
     added ramdisk functionality for SpICE speed; ZK, 2016.10.21
+  Modified plotting programs with LATEX; ZK, 2016.11.07
+  Modified for filtFactor range: filtFacLow and filtfacHigh; 
+    commented out anafast section of test function; ZK, 2016.11.10
 
 """
 
@@ -60,19 +63,146 @@ import subprocess # for calling RAM Disk scripts
 ################################################################################
 # plotting
 
+def combPlots(saveFile1="simStatResultC_10000.npy",saveFile2="simStatC_SMICA.npy",
+              saveFile3="simStatResultS_10000.npy",
+              saveFile4="simStatResultC_10000_C2filtered.npy",
+              saveFile5="simStatResultS_10000_C2filtered.npy",lmax=100):
+  """
+  name:
+    combPlots
+  purpose:
+    combine nonfiltered and filtered, masked and unmasked results
+    plot them
+  inputs:
+    ...describe these please
+    lmax: same as in makePlots
+  """
+
+  # load results
+  mySimStatResultC = np.load(saveFile1)
+  myC_SMICA        = np.load(saveFile2)
+  mySimStatResultS = np.load(saveFile3)
+  mySimStatResultC_filt = np.load(saveFile4)
+  mySimStatResultS_filt = np.load(saveFile5)
+
+  thetaArray2sp   = myC_SMICA[0]
+  C_SMICAsp       = myC_SMICA[1]
+  C_SMICAmaskedsp = myC_SMICA[2]
+
+  # nonfiltered
+  thetaArray      = mySimStatResultC[0]
+  avgEnsembleFull = mySimStatResultC[1]
+  stdEnsembleFull = mySimStatResultC[2]
+  avgEnsembleCut  = mySimStatResultC[3]
+  stdEnsembleCut  = mySimStatResultC[4]
+
+  sEnsembleFull   = mySimStatResultS[0]
+  sEnsembleCut    = mySimStatResultS[1]
+
+  # filtered
+  thetaArray_filt      = mySimStatResultC_filt[0]
+  avgEnsembleFull_filt = mySimStatResultC_filt[1]
+  stdEnsembleFull_filt = mySimStatResultC_filt[2]
+  avgEnsembleCut_filt  = mySimStatResultC_filt[3]
+  stdEnsembleCut_filt  = mySimStatResultC_filt[4]
+
+  sEnsembleFull_filt   = mySimStatResultS_filt[0]
+  sEnsembleCut_filt    = mySimStatResultS_filt[1]
+
+  nSims = sEnsembleCut.size -1
+
+  # do the plotting
+  print 'plotting correlation functions... '
+
+  # first the unfiltered results
+  # first the whole sky statistics
+  plt.plot(thetaArray,avgEnsembleFull,label='sim. ensemble average (no mask)',color='b')
+  plt.fill_between(thetaArray,avgEnsembleFull+stdEnsembleFull,
+                   avgEnsembleFull-stdEnsembleFull,alpha=0.25,
+                   label='simulation 1sigma envelope',color='b')
+  #plt.plot(thetaArray2,C_SMICA,label='SMICA R2 (inpainted,anafast)')
+  #plt.plot(thetaArray2sp,C_SMICAsp,label='SMICA R2 (inpainted,spice)')
+  plt.plot(thetaArray2sp,C_SMICAsp,label='SMICA R2 (inpainted)',linestyle='-.',linewidth=2)
+
+  #plt.xlabel('theta (degrees)')
+  #plt.ylabel('C(theta)')
+  #plt.title('whole sky covariance of '+str(nSims)+' simulated CMBs, lmax='+str(lmax))
+  #plt.ylim([-500,1000])
+  #plt.plot([0,180],[0,0]) #horizontal line
+  #plt.legend()
+  #plt.show()
+
+  # now the cut sky
+  plt.plot(thetaArray,avgEnsembleCut,label='sim. ensemble average (masked)',color='g')
+  plt.fill_between(thetaArray,avgEnsembleCut+stdEnsembleCut,
+                   avgEnsembleCut-stdEnsembleCut,alpha=0.25,
+                   label='simulation 1sigma envelope',color='g')
+  #plt.plot(thetaArray2,C_SMICAmasked,label='SMICA R2 (masked ,anafast)')
+  #plt.plot(thetaArray2sp,C_SMICAmaskedsp,label='SMICA R2 (masked ,spice)')
+  plt.plot(thetaArray2sp,C_SMICAmaskedsp,label='SMICA R2 (masked)',linestyle='--',linewidth=2)
+  
+  plt.xlabel('theta (degrees)')
+  plt.ylabel('C(theta)')
+  plt.title('cut sky covariance of '+str(nSims)+' simulated CMBs, lmax='+str(lmax))
+  plt.ylim([-500,1000])
+  plt.plot([0,180],[0,0],color='k') #horizontal line
+  plt.legend()
+  plt.show()
+
+
+  # now the filtered results
+  # first the whole sky statistics
+  plt.plot(thetaArray,avgEnsembleFull_filt,label='sim. ensemble average (no mask)',color='b')
+  plt.fill_between(thetaArray,avgEnsembleFull_filt+stdEnsembleFull_filt,
+                   avgEnsembleFull_filt-stdEnsembleFull_filt,alpha=0.25,
+                   label='simulation 1sigma envelope',color='b')
+  #plt.plot(thetaArray2,C_SMICA,label='SMICA R2 (inpainted,anafast)')
+  #plt.plot(thetaArray2sp,C_SMICAsp,label='SMICA R2 (inpainted,spice)')
+  plt.plot(thetaArray2sp,C_SMICAsp,label='SMICA R2 (inpainted)',linestyle='-.',linewidth=2)
+
+  #plt.xlabel('theta (degrees)')
+  #plt.ylabel('C(theta)')
+  #plt.title('whole sky covariance of '+str(nSims)+' simulated CMBs, lmax='+str(lmax))
+  #plt.ylim([-500,1000])
+  #plt.plot([0,180],[0,0]) #horizontal line
+  #plt.legend()
+  #plt.show()
+
+  # now the cut sky
+  plt.plot(thetaArray,avgEnsembleCut_filt,label='sim. ensemble average (masked)',color='g')
+  plt.fill_between(thetaArray,avgEnsembleCut_filt+stdEnsembleCut_filt,
+                   avgEnsembleCut_filt-stdEnsembleCut_filt,alpha=0.25,
+                   label='simulation 1sigma envelope',color='g')
+  #plt.plot(thetaArray2,C_SMICAmasked,label='SMICA R2 (masked ,anafast)')
+  #plt.plot(thetaArray2sp,C_SMICAmaskedsp,label='SMICA R2 (masked ,spice)')
+  plt.plot(thetaArray2sp,C_SMICAmaskedsp,label='SMICA R2 (masked)',linestyle='--',linewidth=2)
+  
+  plt.xlabel('theta (degrees)')
+  plt.ylabel('C(theta)')
+  plt.title('cut sky covariance of '+str(nSims)+' simulated CMBs, lmax='+str(lmax))
+  plt.ylim([-500,1000])
+  plt.plot([0,180],[0,0],color='k') #horizontal line
+  plt.legend()
+  plt.show()
+
+
+
 def makePlots(saveFile1="simStatResultC.npy",saveFile2="simStatC_SMICA.npy",
               saveFile3="simStatResultS.npy",lmax=100):
   """
   name:
     makePlots
   purpose:
-    plotting results of sim_stats
+    plotting results of sim_stats and printing p-values
   inputs:
     saveFile1,saveFile2,saveFile3... describe these please
 
     lmax: should be what was used to create results
       (would be better if it were in the save file but it's not)
       Default: 100
+  outputs:
+    returns p-values for full sky, cut sky
+    prints p-values for S_1/2
   """
   # load results
   mySimStatResultC = np.load(saveFile1)
@@ -98,41 +228,70 @@ def makePlots(saveFile1="simStatResultC.npy",saveFile2="simStatC_SMICA.npy",
   # do the plotting
   print 'plotting correlation functions... '
   # first the whole sky statistics
-  plt.plot(thetaArray,avgEnsembleFull,label='sim. ensemble average (no mask)')
+  plt.plot(thetaArray,avgEnsembleFull,label='sim. ensemble average (no mask)',linestyle='--',linewidth=2)
   plt.fill_between(thetaArray,avgEnsembleFull+stdEnsembleFull,
                    avgEnsembleFull-stdEnsembleFull,alpha=0.25,
                    label='simulation 1sigma envelope')
   #plt.plot(thetaArray2,C_SMICA,label='SMICA R2 (inpainted,anafast)')
   #plt.plot(thetaArray2sp,C_SMICAsp,label='SMICA R2 (inpainted,spice)')
-  plt.plot(thetaArray2sp,C_SMICAsp,label='SMICA R2 (inpainted)')
+  plt.plot(thetaArray2sp,C_SMICAsp,label='SMICA R2 (inpainted)',linewidth=2)
 
-  plt.xlabel('theta (degrees)')
-  plt.ylabel('C(theta)')
+  plt.xlabel(r'Angular Separation $\theta$ (degrees)')
+  plt.ylabel(r'$C(\theta)$')
   plt.title('whole sky covariance of '+str(nSims)+' simulated CMBs, lmax='+str(lmax))
   plt.ylim([-500,1000])
-  plt.plot([0,180],[0,0]) #horizontal line
+  plt.plot([0,180],[0,0],color='k') #horizontal line
   plt.legend()
   plt.show()
 
   # now the cut sky
-  plt.plot(thetaArray,avgEnsembleCut,label='sim. ensemble average (masked)')
+  plt.plot(thetaArray,avgEnsembleCut,label='sim. ensemble average (masked)',linestyle='--',linewidth=2)
   plt.fill_between(thetaArray,avgEnsembleCut+stdEnsembleCut,
                    avgEnsembleCut-stdEnsembleCut,alpha=0.25,
                    label='simulation 1sigma envelope')
   #plt.plot(thetaArray2,C_SMICAmasked,label='SMICA R2 (masked ,anafast)')
   #plt.plot(thetaArray2sp,C_SMICAmaskedsp,label='SMICA R2 (masked ,spice)')
-  plt.plot(thetaArray2sp,C_SMICAmaskedsp,label='SMICA R2 (masked)')
+  plt.plot(thetaArray2sp,C_SMICAmaskedsp,label='SMICA R2 (masked)',linewidth=2)
   
-  plt.xlabel('theta (degrees)')
-  plt.ylabel('C(theta)')
+  plt.xlabel(r'Angular Separation $\theta$ (degrees)')
+  plt.ylabel(r'$C(\theta)$')
   plt.title('cut sky covariance of '+str(nSims)+' simulated CMBs, lmax='+str(lmax))
   plt.ylim([-500,1000])
-  plt.plot([0,180],[0,0]) #horizontal line
+  plt.plot([0,180],[0,0],color='k') #horizontal line
   plt.legend()
   plt.show()
 
   print 'plotting S_{1/2} distributions... '
   myBins = np.logspace(2,7,100)
+  """
+  # whole sky
+  plt.axvline(x=sEnsembleFull[0],color='b',linewidth=3,label='SMICA inpainted')
+  #plt.axvline(x=sEnsembleCut[0] ,color='g',linewidth=3,label='SMICA masked')
+  plt.hist(sEnsembleFull[1:],bins=myBins,histtype='step',label='full sky')
+  #plt.hist(sEnsembleCut[1:], bins=myBins,histtype='step',label='cut sky')
+
+  plt.gca().set_xscale("log")
+  plt.legend()
+  plt.xlabel(r'$S_{1/2} (\mu K^4)$')
+  plt.ylabel('Counts')
+  plt.title(r'$S_{1/2}$ of '+str(nSims)+' simulated CMBs')
+  plt.show()
+  """
+
+  # cut sky
+  #plt.axvline(x=sEnsembleFull[0],color='b',linewidth=3,label='SMICA inpainted')
+  plt.axvline(x=sEnsembleCut[0] ,color='g',linewidth=3,label='SMICA masked')
+  #plt.hist(sEnsembleFull[1:],bins=myBins,histtype='step',label='full sky')
+  plt.hist(sEnsembleCut[1:], bins=myBins,histtype='step',label='cut sky')
+
+  plt.gca().set_xscale("log")
+  plt.legend()
+  plt.xlabel(r'$S_{1/2} (\mu K^4)$')
+  plt.ylabel('Counts')
+  plt.title(r'$S_{1/2}$ of '+str(nSims)+' simulated CMBs')
+  plt.show()
+
+  # whole and cut together
   plt.axvline(x=sEnsembleFull[0],color='b',linewidth=3,label='SMICA inpainted')
   plt.axvline(x=sEnsembleCut[0] ,color='g',linewidth=3,label='SMICA masked')
   plt.hist(sEnsembleFull[1:],bins=myBins,histtype='step',label='full sky')
@@ -140,12 +299,37 @@ def makePlots(saveFile1="simStatResultC.npy",saveFile2="simStatC_SMICA.npy",
 
   plt.gca().set_xscale("log")
   plt.legend()
-  plt.xlabel('S_{1/2} (microK^4)')
+  plt.xlabel(r'$S_{1/2} (\mu K^4)$')
   plt.ylabel('Counts')
-  plt.title('S_{1/2} of '+str(nSims)+' simulated CMBs')
+  plt.title(r'$S_{1/2}$ of '+str(nSims)+' simulated CMBs')
   plt.show()
 
 
+  # calculate p-values
+  nUnderFull = 0 # also will include nEqual
+  nUnderCut  = 0 # also will include nEqual
+  nOverFull  = 0
+  nOverCut   = 0
+
+  thresholdFull = sEnsembleFull[0]
+  thresholdCut  = sEnsembleCut[0]
+
+  for nSim in range(nSims-1): # -1 due to SMICA in 0 position
+    if sEnsembleFull[nSim+1] > thresholdFull:
+      nOverFull  +=1
+    else:
+      nUnderFull +=1
+    if sEnsembleCut[nSim+1] > thresholdCut:
+      nOverCut   +=1
+    else:
+      nUnderCut  +=1
+  pValFull = nUnderFull/float(nUnderFull+nOverFull)
+  pValCut  = nUnderCut /float(nUnderCut +nOverCut )
+
+  print 'P-value full sky: ',pValFull
+  print 'P-value  cut sky: ',pValCut
+
+  return pValFull,pValCut
 
 ################################################################################
 # the main functions: getCovar, getSMICA, and SOneHalf
@@ -421,7 +605,7 @@ def SOneHalf(thetaArray, CArray, nTerms=250):
 
 def test(useCLASS=1,useLensing=1,classCamb=1,nSims=1000,lmax=100,lmin=2,
          newSMICA=False,newDeg=False,suppressC2=False,suppFactor=0.23,
-         filterC2=False,filtFactor=0.25):
+         filterC2=False,filtFacLow=0.1,filtFacHigh=0.2):
   """
     code for testing the other functions in this module
     Inputs:
@@ -452,11 +636,11 @@ def test(useCLASS=1,useLensing=1,classCamb=1,nSims=1000,lmax=100,lmin=2,
       suppFactor: multiplies C_2 if suppressC2 is True
         Default: 0.23 # from Tegmark et. al. 2003, figure 13 (WMAP)
       filterC2 : set to true to filter simulated CMBs after spice calculates
-        cut sky C_l.  Sims will pass filter if cut sky C_2 is below theoretical
-        C_2 * filtFactor.
+        cut sky C_l.  Sims will pass filter if C_2 * filtFacLow < C_2^sim <
+        C_2 * filtFacHigh.
         Default: False
-      filtFactor: defines C_2 threshold for passing simulated CMBs
-        Default: 0.25
+      filtFacLow,filtFacHigh: defines C_2 range for passing simulated CMBs
+        Default: 0.1,0.2
   """
 
   # load data
@@ -527,6 +711,8 @@ def test(useCLASS=1,useLensing=1,classCamb=1,nSims=1000,lmax=100,lmin=2,
   nSteps = 1800
   #lmax = 100
 
+  """ # don't want anafast after all
+
   # get unmasked and masked SMICA covariances
   #   note: getSMICA uses linspace in theta for thetaArray
   #newSMICA = False#True
@@ -536,6 +722,9 @@ def test(useCLASS=1,useLensing=1,classCamb=1,nSims=1000,lmax=100,lmin=2,
   print ''
   print 'S_{1/2}(anafast): SMICA, no mask: ',S_SMICAnomask,', masked: ',S_SMICAmasked
   print ''
+  """
+
+
   # get C_l from SPICE to compare to above method
   #   note: getSMICA uses linspace in theta for thetaArray
   #newSMICA = False#True
@@ -548,8 +737,8 @@ def test(useCLASS=1,useLensing=1,classCamb=1,nSims=1000,lmax=100,lmin=2,
 
   # Find S_{1/2} in real space to compare methods
   nTerms = 10000
-  SSnm2   = SOneHalf(thetaArray2,  C_SMICA,         nTerms=nTerms)
-  SSmd2   = SOneHalf(thetaArray2,  C_SMICAmasked,   nTerms=nTerms)
+  #SSnm2   = SOneHalf(thetaArray2,  C_SMICA,         nTerms=nTerms)
+  #SSmd2   = SOneHalf(thetaArray2,  C_SMICAmasked,   nTerms=nTerms)
   SSnm2sp = SOneHalf(thetaArray2sp,C_SMICAsp,       nTerms=nTerms)
   SSmd2sp = SOneHalf(thetaArray2sp,C_SMICAmaskedsp, nTerms=nTerms)
 
@@ -630,8 +819,8 @@ def test(useCLASS=1,useLensing=1,classCamb=1,nSims=1000,lmax=100,lmin=2,
     ell2 = np.arange(Cl_masked.shape[0])
     
     # Check for low power of cut sky C_2
-    #   with filterC2=True, takes ~5min for 100 sims
-    if (filterC2 == True and fullCl[2]*filtFactor > Cl_masked[2]) or filterC2 == False:
+    if (filterC2 == True and fullCl[2]*filtFacHigh > Cl_masked[2]
+                         and Cl_masked[2] > fullCl[2]*filtFacLow) or filterC2 == False:
 
       #   note: getCovar uses linspace in x for thetaArray
       thetaArray,cArray2 = getCovar(ell2[:lmax+1],Cl_masked[:lmax+1],theta_i=theta_i,
@@ -709,11 +898,11 @@ def test(useCLASS=1,useLensing=1,classCamb=1,nSims=1000,lmax=100,lmin=2,
   # S_{1/2} output
   print ''
   print 'using CIC method: '
-  print 'S_{1/2}(anafast): SMICA, no mask: ',S_SMICAnomask,', masked: ',S_SMICAmasked
+  #print 'S_{1/2}(anafast): SMICA, no mask: ',S_SMICAnomask,', masked: ',S_SMICAmasked
   print 'S_{1/2}(spice): SMICA, no mask: ',S_SMICAnomasksp,', masked: ',S_SMICAmaskedsp
   print ''
   print 'using CCdx method: '
-  print 'S_{1/2}(anafast): SMICA, no mask: ',SSnm2,', masked: ',SSmd2
+  #print 'S_{1/2}(anafast): SMICA, no mask: ',SSnm2,', masked: ',SSmd2
   print 'S_{1/2}(spice): SMICA, no mask: ',SSnm2sp,', masked: ',SSmd2sp
   print ''
 
