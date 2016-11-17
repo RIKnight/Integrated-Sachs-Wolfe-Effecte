@@ -33,6 +33,8 @@ Modification History:
   Modified for filtFactor range: filtFacLow and filtFacHigh; ZK, 2016.11.08
   Added C2 Ensemble for calculation of C_2^LCDM,cut-sky p-value; ZK, 2016.11.09
   Added doCovar option to test function; ZK, 2016.11.12
+  Slight output adjustment; ZK, 2016.11.15
+  Removed titles from plots; ZK, 2016.11.17
   
 """
 
@@ -124,7 +126,7 @@ def makeC2Plot(saveFile='optSxC2.npy'):
   plt.legend()
   plt.xlabel(r'$C_2$ power $(\mu K^2)$')
   plt.ylabel('Counts')
-  plt.title(r'$C_2$ of '+str(nSims)+' simulated CMBs') 
+  #plt.title(r'$C_2$ of '+str(nSims)+' simulated CMBs') 
   plt.show()
 
   # find p-value
@@ -182,6 +184,8 @@ def makeCornerPlotSmall(saveFile="optSxResult.npy",suppressC2=False):
                          truths=[np.log10(SxEnsembleMin[0]),#maknp.log10(SxEnsembleMinDensity[0]),
                                  np.log10(PvalMinima[0]),XvalMinima[0]]  )
   plt.show()
+
+  print 'for SMICA: x = ',XvalMinima[0],', S_x = ',SxEnsembleMin[0],', P(x) = ',PvalMinima[0]
 
 
 def makeCornerPlot(saveFile="optSxResult.npy",suppressC2=False):
@@ -279,12 +283,14 @@ def makePlots(saveFile="optSxResult.npy",suppressC2=False):
   #plt.legend()
   plt.xlabel('S_x (microK^4)')
   plt.ylabel('Counts')
+  """
   if suppressC2:
     plt.title('S_x of '+str(nSims-1)+' simulated CMBs, C_2 suppressed') 
                                 #-1 due to SMICA in zero position
   else:
     plt.title('S_x of '+str(nSims-1)+' simulated CMBs') 
                                 #-1 due to SMICA in zero position
+  """
   plt.show()
 
   print 'plotting S_x density distribution... '
@@ -295,10 +301,12 @@ def makePlots(saveFile="optSxResult.npy",suppressC2=False):
   #plt.legend()
   plt.xlabel('S_x / delta_x (microK^4)')
   plt.ylabel('Counts')
+  """
   if suppressC2:
     plt.title('S_x / delta_x of '+str(nSims-1)+' simulated CMBs, C_2 suppressed') 
   else:
     plt.title('S_x / delta_x of '+str(nSims-1)+' simulated CMBs') 
+  """
   plt.show()
 
   print 'plotting P-value distribution (logarithmic)... '
@@ -311,10 +319,12 @@ def makePlots(saveFile="optSxResult.npy",suppressC2=False):
   #plt.legend()
   plt.xlabel('P-value')
   plt.ylabel('Counts')
+  """
   if suppressC2:
     plt.title('P-value of S_x of '+str(nSims-1)+' simulated CMBs, C_2 suppressed') 
   else:
     plt.title('P-value of S_x of '+str(nSims-1)+' simulated CMBs') 
+  """
   plt.show()
 
   """
@@ -341,10 +351,12 @@ def makePlots(saveFile="optSxResult.npy",suppressC2=False):
   plt.hist(XvalMinima[1:], bins=myBinsX,histtype='step',label='cut sky')
   plt.xlabel('x value')
   plt.ylabel('Counts')
+  """
   if suppressC2:
     plt.title('x value of S_x of '+str(nSims-1)+' simulated CMBs, C_2 suppressed') 
   else:
     plt.title('x value of S_x of '+str(nSims-1)+' simulated CMBs') 
+  """
   plt.show()
 
 
@@ -365,7 +377,7 @@ def makePlots(saveFile="optSxResult.npy",suppressC2=False):
   plt.colorbar()
   plt.xlabel('log10(S_x)')
   plt.ylabel('X value')
-  plt.title('S_x vs. X value')
+  #plt.title('S_x vs. X value')
   plt.show()
   # SxEnsembleMinDensity vs. XvalMinima
   plt.hist2d(log10SxEnsembleMinDensity[1:],XvalMinima[1:],
@@ -374,7 +386,7 @@ def makePlots(saveFile="optSxResult.npy",suppressC2=False):
   plt.colorbar()
   plt.xlabel('log10(S_x/delta_x)')
   plt.ylabel('X value')
-  plt.title('S_x/delta_x vs. X value')
+  #plt.title('S_x/delta_x vs. X value')
   plt.show()
   # PvalMinima vs. XvalMinima
   plt.hist2d(log10PvalMinima[1:],XvalMinima[1:],
@@ -383,7 +395,7 @@ def makePlots(saveFile="optSxResult.npy",suppressC2=False):
   plt.colorbar()
   plt.xlabel('log10(P-value)')
   plt.ylabel('X value')
-  plt.title('P value vs. X value')
+  #plt.title('P value vs. X value')
   plt.show()
 
   # SxEnsembleMin vs. PvalMinima
@@ -393,7 +405,7 @@ def makePlots(saveFile="optSxResult.npy",suppressC2=False):
   plt.colorbar()
   plt.xlabel('log10(S_x)')
   plt.ylabel('log10(P-value)')
-  plt.title('S_x vs. P-value')
+  #plt.title('S_x vs. P-value')
   plt.show()
   # SxEnsembleMinDensity vs. PvalMinima
   plt.hist2d(log10SxEnsembleMinDensity[1:],log10PvalMinima[1:],
@@ -402,7 +414,7 @@ def makePlots(saveFile="optSxResult.npy",suppressC2=False):
   plt.colorbar()
   plt.xlabel('log10(S_x/delta_x)')
   plt.ylabel('log10(P-value)')
-  plt.title('S_x/delta_x vs. P-value')
+  #plt.title('S_x/delta_x vs. P-value')
   plt.show()
 
   # SxEnsembleMin vs. SxEnsembleMinDensity
@@ -412,7 +424,7 @@ def makePlots(saveFile="optSxResult.npy",suppressC2=False):
   plt.colorbar()
   plt.xlabel('log10(S_x)')
   plt.ylabel('log10(S_x/delta_x)')
-  plt.title('S_x vs. S_x/delta_x')
+  #plt.title('S_x vs. S_x/delta_x')
   plt.show()
 
 
@@ -757,7 +769,8 @@ def test(useCLASS=1,useLensing=1,classCamb=1,nSims=1000,lmax=100,lmin=2,
   ##############################################################################
   # plot/print results
   makePlots(saveFile=saveFile,suppressC2=suppressC2)
-  makeCornerPlot(saveFile=saveFile,suppressC2=suppressC2)
+  #makeCornerPlot(saveFile=saveFile,suppressC2=suppressC2)
+  makeCornerPlotSmall(saveFile=saveFile,suppressC2=suppressC2)
   c2pval = makeC2Plot(saveFile=saveFileC2)
   if doCovar:
     sims.makePlots(saveFile1=saveFile1,saveFile2=saveFile2,saveFile3=saveFile3)

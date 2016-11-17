@@ -40,6 +40,8 @@ Modification History:
   Modified plotting programs with LATEX; ZK, 2016.11.07
   Modified for filtFactor range: filtFacLow and filtfacHigh; 
     commented out anafast section of test function; ZK, 2016.11.10
+  Added R1 option to getSMICA; ZK, 2016.11.16
+  Removed titles from plots; ZK, 2016.11.17
 
 """
 
@@ -143,7 +145,7 @@ def combPlots(saveFile1="simStatResultC_10000.npy",saveFile2="simStatC_SMICA.npy
   
   plt.xlabel('theta (degrees)')
   plt.ylabel('C(theta)')
-  plt.title('cut sky covariance of '+str(nSims)+' simulated CMBs, lmax='+str(lmax))
+  #plt.title('cut-sky covariance of '+str(nSims)+' simulated CMBs, lmax='+str(lmax))
   plt.ylim([-500,1000])
   plt.plot([0,180],[0,0],color='k') #horizontal line
   plt.legend()
@@ -162,7 +164,7 @@ def combPlots(saveFile1="simStatResultC_10000.npy",saveFile2="simStatC_SMICA.npy
 
   #plt.xlabel('theta (degrees)')
   #plt.ylabel('C(theta)')
-  #plt.title('whole sky covariance of '+str(nSims)+' simulated CMBs, lmax='+str(lmax))
+  #plt.title('whole-sky covariance of '+str(nSims)+' simulated CMBs, lmax='+str(lmax))
   #plt.ylim([-500,1000])
   #plt.plot([0,180],[0,0]) #horizontal line
   #plt.legend()
@@ -179,7 +181,7 @@ def combPlots(saveFile1="simStatResultC_10000.npy",saveFile2="simStatC_SMICA.npy
   
   plt.xlabel('theta (degrees)')
   plt.ylabel('C(theta)')
-  plt.title('cut sky covariance of '+str(nSims)+' simulated CMBs, lmax='+str(lmax))
+  #plt.title('cut-sky covariance of '+str(nSims)+' simulated CMBs, lmax='+str(lmax))
   plt.ylim([-500,1000])
   plt.plot([0,180],[0,0],color='k') #horizontal line
   plt.legend()
@@ -238,7 +240,7 @@ def makePlots(saveFile1="simStatResultC.npy",saveFile2="simStatC_SMICA.npy",
 
   plt.xlabel(r'Angular Separation $\theta$ (degrees)')
   plt.ylabel(r'$C(\theta)$')
-  plt.title('whole sky covariance of '+str(nSims)+' simulated CMBs, lmax='+str(lmax))
+  #plt.title('whole-sky covariance of '+str(nSims)+' simulated CMBs, lmax='+str(lmax))
   plt.ylim([-500,1000])
   plt.plot([0,180],[0,0],color='k') #horizontal line
   plt.legend()
@@ -255,53 +257,57 @@ def makePlots(saveFile1="simStatResultC.npy",saveFile2="simStatC_SMICA.npy",
   
   plt.xlabel(r'Angular Separation $\theta$ (degrees)')
   plt.ylabel(r'$C(\theta)$')
-  plt.title('cut sky covariance of '+str(nSims)+' simulated CMBs, lmax='+str(lmax))
+  #plt.title('cut-sky covariance of '+str(nSims)+' simulated CMBs, lmax='+str(lmax))
   plt.ylim([-500,1000])
   plt.plot([0,180],[0,0],color='k') #horizontal line
   plt.legend()
   plt.show()
 
   print 'plotting S_{1/2} distributions... '
-  myBins = np.logspace(2,7,100)
+  #myBins = np.logspace(2,7,100)
+  myBins = np.logspace(2,6,100)
   """
   # whole sky
   plt.axvline(x=sEnsembleFull[0],color='b',linewidth=3,label='SMICA inpainted')
   #plt.axvline(x=sEnsembleCut[0] ,color='g',linewidth=3,label='SMICA masked')
-  plt.hist(sEnsembleFull[1:],bins=myBins,histtype='step',label='full sky')
-  #plt.hist(sEnsembleCut[1:], bins=myBins,histtype='step',label='cut sky')
+  plt.hist(sEnsembleFull[1:],bins=myBins,color='b',histtype='step',label='full sky')
+  #plt.hist(sEnsembleCut[1:], bins=myBins,color='g',histtype='step',label='cut sky')
 
   plt.gca().set_xscale("log")
   plt.legend()
   plt.xlabel(r'$S_{1/2} (\mu K^4)$')
   plt.ylabel('Counts')
-  plt.title(r'$S_{1/2}$ of '+str(nSims)+' simulated CMBs')
+  #plt.title(r'$S_{1/2}$ of '+str(nSims)+' simulated CMBs')
+  plt.xlim((500,10**6))
   plt.show()
   """
 
   # cut sky
   #plt.axvline(x=sEnsembleFull[0],color='b',linewidth=3,label='SMICA inpainted')
   plt.axvline(x=sEnsembleCut[0] ,color='g',linewidth=3,label='SMICA masked')
-  #plt.hist(sEnsembleFull[1:],bins=myBins,histtype='step',label='full sky')
-  plt.hist(sEnsembleCut[1:], bins=myBins,histtype='step',label='cut sky')
+  #plt.hist(sEnsembleFull[1:],bins=myBins,color='b',histtype='step',label='full sky')
+  plt.hist(sEnsembleCut[1:], bins=myBins,color='g',histtype='step',label='cut sky')
 
   plt.gca().set_xscale("log")
   plt.legend()
   plt.xlabel(r'$S_{1/2} (\mu K^4)$')
   plt.ylabel('Counts')
-  plt.title(r'$S_{1/2}$ of '+str(nSims)+' simulated CMBs')
+  #plt.title(r'$S_{1/2}$ of '+str(nSims)+' simulated CMBs')
+  plt.xlim((500,10**6))
   plt.show()
 
   # whole and cut together
   plt.axvline(x=sEnsembleFull[0],color='b',linewidth=3,label='SMICA inpainted')
   plt.axvline(x=sEnsembleCut[0] ,color='g',linewidth=3,label='SMICA masked')
-  plt.hist(sEnsembleFull[1:],bins=myBins,histtype='step',label='full sky')
-  plt.hist(sEnsembleCut[1:], bins=myBins,histtype='step',label='cut sky')
+  plt.hist(sEnsembleFull[1:],bins=myBins,color='b',histtype='step',label='full sky')
+  plt.hist(sEnsembleCut[1:], bins=myBins,color='g',histtype='step',label='cut sky')
 
   plt.gca().set_xscale("log")
   plt.legend()
   plt.xlabel(r'$S_{1/2} (\mu K^4)$')
   plt.ylabel('Counts')
-  plt.title(r'$S_{1/2}$ of '+str(nSims)+' simulated CMBs')
+  #plt.title(r'$S_{1/2}$ of '+str(nSims)+' simulated CMBs')
+  plt.xlim((500,10**6))
   plt.show()
 
 
@@ -396,7 +402,7 @@ def getCovar(ell,Cl,theta_i=0.0,theta_f=180.0,nSteps = 1800,doTime=False,lmin=0)
 
 
 def getSMICA(theta_i=0.0,theta_f=180.0,nSteps=1800,lmax=100,lmin=2,
-             newSMICA=False,useSPICE=True,newDeg=False):
+             newSMICA=False,useSPICE=True,newDeg=False,R1=False):
   """
   Purpose:
     load CMB and mask maps from files, return correlation function for
@@ -418,6 +424,9 @@ def getSMICA(theta_i=0.0,theta_f=180.0,nSteps=1800,lmax=100,lmin=2,
     newDeg: set to True to recalculate map and mask degredations
       Note: the saved files are dependent on the value of lmax that was used
       Default: False
+    R1: set to True to use R1 versions of SMICA and mask.  Otherwise, R2 is used
+      Only affects which Planck files are used; irrelevant if newDeg=False.
+      Default: False
   Outupts:
     theta: nSteps+1 angles that C(theta) arrays are for (degrees)
     unmasked: C(theta) unmasked (microK^2)
@@ -433,12 +442,18 @@ def getSMICA(theta_i=0.0,theta_f=180.0,nSteps=1800,lmax=100,lmin=2,
     if newDeg:
       # load maps; default files have 2048,NESTED,GALACTIC
       dataDir   = '/Data/'
-      smicaFile = 'COM_CMB_IQU-smica-field-int_2048_R2.01_full.fits'
-      maskFile  = 'COM_CMB_IQU-common-field-MaskInt_2048_R2.01.fits'
+      if R1:
+        smicaFile = 'COM_CompMap_CMB-smica-field-I_2048_R1.20.fits'
+        maskFile  = 'COM_Mask_CMB-union_2048_R1.10.fits'
+      else:
+        smicaFile = 'COM_CMB_IQU-smica-field-int_2048_R2.01_full.fits'
+        maskFile  = 'COM_CMB_IQU-common-field-MaskInt_2048_R2.01.fits'
       print 'opening file ',smicaFile,'... '
       smicaMap,smicaHead = hp.read_map(dataDir+smicaFile,nest=True,h=True)
       print 'opening file ',maskFile,'... '
       maskMap, maskHead  = hp.read_map(dataDir+maskFile, nest=True,h=True)
+      if R1:
+        smicaMap *= 1e-6 #microK to K
 
       # degrade map and mask resolutions from 2048 to 128; convert NESTED to RING
       useAlm = True # set to True to do harmonic space scaling, False for ud_grade
@@ -605,7 +620,7 @@ def SOneHalf(thetaArray, CArray, nTerms=250):
 
 def test(useCLASS=1,useLensing=1,classCamb=1,nSims=1000,lmax=100,lmin=2,
          newSMICA=False,newDeg=False,suppressC2=False,suppFactor=0.23,
-         filterC2=False,filtFacLow=0.1,filtFacHigh=0.2):
+         filterC2=False,filtFacLow=0.1,filtFacHigh=0.2,R1=False):
   """
     code for testing the other functions in this module
     Inputs:
@@ -641,6 +656,9 @@ def test(useCLASS=1,useLensing=1,classCamb=1,nSims=1000,lmax=100,lmin=2,
         Default: False
       filtFacLow,filtFacHigh: defines C_2 range for passing simulated CMBs
         Default: 0.1,0.2
+      R1: set to True to use SMICA and Mask R1.  Otherwise, R2 used.
+        Only affects calculation of newly degraded map.
+        Default: False
   """
 
   # load data
@@ -718,7 +736,7 @@ def test(useCLASS=1,useLensing=1,classCamb=1,nSims=1000,lmax=100,lmin=2,
   #newSMICA = False#True
   thetaArray2, C_SMICA, C_SMICAmasked, S_SMICAnomask, S_SMICAmasked = \
     getSMICA(theta_i=theta_i,theta_f=theta_f,nSteps=nSteps,lmax=lmax,lmin=lmin,
-             newSMICA=newSMICA,newDeg=newDeg,useSPICE=False)
+             newSMICA=newSMICA,newDeg=newDeg,useSPICE=False,R1=R1)
   print ''
   print 'S_{1/2}(anafast): SMICA, no mask: ',S_SMICAnomask,', masked: ',S_SMICAmasked
   print ''
@@ -730,7 +748,7 @@ def test(useCLASS=1,useLensing=1,classCamb=1,nSims=1000,lmax=100,lmin=2,
   #newSMICA = False#True
   thetaArray2sp, C_SMICAsp, C_SMICAmaskedsp, S_SMICAnomasksp, S_SMICAmaskedsp = \
     getSMICA(theta_i=theta_i,theta_f=theta_f,nSteps=nSteps,lmax=lmax,lmin=lmin,
-             newSMICA=newSMICA,newDeg=newDeg,useSPICE=True)
+             newSMICA=newSMICA,newDeg=newDeg,useSPICE=True,R1=R1)
   print ''
   print 'S_{1/2}(spice): SMICA, no mask: ',S_SMICAnomasksp,', masked: ',S_SMICAmaskedsp
   print ''
