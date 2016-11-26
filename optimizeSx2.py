@@ -35,6 +35,8 @@ Modification History:
   Added doCovar option to test function; ZK, 2016.11.12
   Slight output adjustment; ZK, 2016.11.15
   Removed titles from plots; ZK, 2016.11.17
+  Added saveAndExit for extracting S(x) curves; ZK, 2016.11.17
+  Separated optSx from test function; removed SofXList; ZK, 2016.11.20
   
 """
 
@@ -429,6 +431,40 @@ def makePlots(saveFile="optSxResult.npy",suppressC2=False):
 
 
 ################################################################################
+# the main functions: cOptSx
+
+# define cOptSx wrapper
+def optSx(xVals,nXvals,SxValsArray,nSims,xStart,xEnd,nSearch,PvalMinima,XvalMinima):
+  """
+    Name:
+      optSx
+    Purpose:
+      create Pval(x) for each S(x), using ensemble
+        Pval: probability of result equal to or more extreme
+    Prodecure:
+      find global minimum for each Pval(x)
+      if there are equal p-values along the range, the one with the lowest xVal
+        will be reported
+    Inputs:
+      see optimizeSx.c
+    Outputs:
+      output is through parameters PvalMinima, XvalMinima
+
+  """
+  lib = ctypes.cdll.LoadLibrary("../../C/optimizeSx.so")
+  cOptSx = lib.optSx
+  cOptSx.restype = None
+  cOptSx.argtypes = [ndpointer(ctypes.c_double, flags="C_CONTIGUOUS"),
+                     ctypes.c_size_t,
+                     ndpointer(ctypes.c_double, flags="C_CONTIGUOUS",ndim=2,shape=(nSims,nXvals)),
+                     ctypes.c_size_t, ctypes.c_double, ctypes.c_double, ctypes.c_int,
+                     ndpointer(ctypes.c_double, flags="C_CONTIGUOUS"),
+                     ndpointer(ctypes.c_double, flags="C_CONTIGUOUS")]
+  
+  cOptSx(xVals,nXvals,SxValsArray,nSims,xStart,xEnd,nSearch,PvalMinima,XvalMinima)
+
+
+################################################################################
 # testing code
 
 def test(useCLASS=1,useLensing=1,classCamb=1,nSims=1000,lmax=100,lmin=2,
@@ -622,10 +658,6 @@ def test(useCLASS=1,useLensing=1,classCamb=1,nSims=1000,lmax=100,lmin=2,
 
   # put SMICA in as 0th member of the ensemble; 1e12 to convert K^2 to microK^2
   ClEnsembleCut   = np.vstack((ClsmicaCut*1e12,ClEnsembleCut))
-
-  #if doCovar: # actually i prob. don't want this, to match sim_stats data structure
-  #  cEnsembleCut  = np.vstack((C_SMICAmaskedsp,cEnsembleCut))
-  #  sEnsembleCut  = np.vstack((S_SMICAmaskedsp,sEnsembleCut))
   nSims += 1
 
   ##############################################################################
@@ -634,30 +666,33 @@ def test(useCLASS=1,useLensing=1,classCamb=1,nSims=1000,lmax=100,lmin=2,
   nXvals = 181
   thetaVals = np.linspace(0,180,nXvals) # one degree intervals
   xVals = np.cos(thetaVals*np.pi/180)
+  
   Jmnx = np.empty([nXvals,lmax+1,lmax+1])
   for index, xVal in enumerate(xVals):
     Jmnx[index] = legprodint.getJmn(endX=xVal,lmax=lmax,doSave=False)
   SxToInterpolate = np.empty(nXvals)
 
   # create list of functions
-  dummy = lambda x: x**2
-  SofXList = [dummy for i in range(nSims)]
+  #dummy = lambda x: x**2
+  #SofXList = [dummy for i in range(nSims)]
 
 
   # here is where this program starts to diverge from the purely python version
   # create array to hold S_x values
   SxValsArray = np.empty([nSims,nXvals])
 
+  
   for nSim in range(nSims):
     print 'starting S(x) sim ',nSim+1,' of ',nSims
     for index,xVal in enumerate(xVals):  #not using xVal?
       SxToInterpolate[index] = np.dot(ClEnsembleCut[nSim,lmin:lmax+1],
           np.dot(Jmnx[index,lmin:,lmin:],ClEnsembleCut[nSim,lmin:lmax+1]))
-    SofX = interp1d(xVals,SxToInterpolate)
-    SofXList[nSim] = SofX
+    #SofX = interp1d(xVals,SxToInterpolate)
+    #SofXList[nSim] = SofX
 
     SxValsArray[nSim] = SxToInterpolate
 
+  """
     #print SofXList#[nSim]
     doPlot=False#True
     if doPlot:
@@ -683,52 +718,29 @@ def test(useCLASS=1,useLensing=1,classCamb=1,nSims=1000,lmax=100,lmin=2,
     plt.xlabel('x')
     plt.ylabel('S_x')
     plt.show()
+  """
+
+  # Kludge for extracting the S(x) ensemble to disk for Jackknife testing later
+  saveAndExit = False #True
+  saveAndExitFile = 'SofXEnsemble.npy'
+  if saveAndExit:
+    np.save(saveAndExitFile,np.vstack((xVals,SxValsArray)))
+    print 'saving file ',saveAndExitFile,' and exiting.'
+    return 0
 
 
   ##############################################################################
   # send data to c library function in optimizeSx.so
-  #
-  # create Pval(x) for each S(x), using ensemble
-  #   Pval: probability of result equal to or more extreme
-  # find global minimum for each Pval(x)
-  # if there are equal p-values along the range, the one with the lowest xVal
-  #   will be reported
 
-  # write to file to send to c program
-  #np.savetxt('optSx.tmp',np.vstack((xVals,SxValsArray)))
-  #print 'file optSx.tmp created.'
-
-  # try calling c as shared library
-  #import ctypes
-  #from numpy.ctypeslib import ndpointer
-  lib = ctypes.cdll.LoadLibrary("../../C/optimizeSx.so")
-  cOptSx = lib.optSx
-  cOptSx.restype = None
-  cOptSx.argtypes = [ndpointer(ctypes.c_double, flags="C_CONTIGUOUS"),
-                     ctypes.c_size_t,
-                     ndpointer(ctypes.c_double, flags="C_CONTIGUOUS",ndim=2,shape=(nSims,nXvals)),
-                     ctypes.c_size_t, ctypes.c_double, ctypes.c_double, ctypes.c_int,
-                     ndpointer(ctypes.c_double, flags="C_CONTIGUOUS"),
-                     ndpointer(ctypes.c_double, flags="C_CONTIGUOUS")]
-  
   xStart = -1.0
   xEnd = 1.0
   nSearch = 181 # same num as nXvals for now, but spaced equally in x, not theta
-  #xStart = -0.5
-  #xEnd = 0.8
-  #nSearch = 131
-  #xStart = -0.4586 # where C(theta)_true crosses 0
-  #xEnd = 0.7537    # where C(theta)_true crosses 0
-  #nSearch = 131
-  #nSearch = 261
   PvalMinima = np.empty(nSims) # for return values
   XvalMinima = np.empty(nSims) # for return values
 
   doTime = True # to time the run and print output
   startTime = time.time()
-  #print  SxValsArray[5]
-  #raw_input("that was python's SxValsArray[5].  Press enter.")
-  cOptSx(xVals,nXvals,SxValsArray,nSims,xStart,xEnd,nSearch,PvalMinima,XvalMinima)
+  optSx(xVals,nXvals,SxValsArray,nSims,xStart,xEnd,nSearch,PvalMinima,XvalMinima)
   timeInterval2 = time.time()-startTime
   if doTime: print 'time elapsed: ',int(timeInterval2/60.),' minutes'
 
@@ -738,7 +750,9 @@ def test(useCLASS=1,useLensing=1,classCamb=1,nSims=1000,lmax=100,lmin=2,
 
   SxEnsembleMin = np.empty(nSims)
   for nSim in range(nSims):
-    SxEnsembleMin[nSim] = SofXList[nSim](XvalMinima[nSim])
+    # need to interpolate since optSx uses interpolation
+    SofX = interp1d(xVals,SxValsArray[nSim])
+    SxEnsembleMin[nSim] = SofX(XvalMinima[nSim])
 
 
   ##############################################################################

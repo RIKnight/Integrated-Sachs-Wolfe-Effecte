@@ -332,8 +332,10 @@ def makePlots(saveFile1="simStatResultC.npy",saveFile2="simStatC_SMICA.npy",
   pValFull = nUnderFull/float(nUnderFull+nOverFull)
   pValCut  = nUnderCut /float(nUnderCut +nOverCut )
 
-  print 'P-value full sky: ',pValFull
-  print 'P-value  cut sky: ',pValCut
+  print 'S_{1/2} full-sky: ',sEnsembleFull[0]
+  print 'S_{1/2}  cut-sky: ',sEnsembleCut[0]
+  print 'P-value full-sky: ',pValFull
+  print 'P-value  cut-sky: ',pValCut
 
   return pValFull,pValCut
 
