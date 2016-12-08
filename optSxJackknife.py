@@ -16,7 +16,10 @@ Outputs:
 Modification History:
   Branched from optimizeSx2.py; ZK, 2016.11.20
   Made random number generator test; ZK, 2016.11.24
-  Fixed serious error in nSimsBig initialization; ZK, 2016.11.25
+  Fixed serious error in nSimsBig initialization; 
+    added saveText to test function; ZK, 2016.11.25
+  Upgraded to new version of op2.optSx that handles m*n nested loops
+    and sublists; ZK, 2016.12.07
   
 """
 
@@ -41,6 +44,41 @@ import sim_stats as sims  # for getSMICA and getCovar
 
 import optimizeSx2 as op2 # for optSx, PvalPval, makeC2Plot, makeCornerPlotSmall
 
+
+################################################################################
+# plotting
+
+def makePlotPX(saveFile="optSxResult.npy"):
+  """
+    Name:
+      makePlotPX
+    Purpose:
+      plotting results of x vs p
+    Inputs:
+      saveFile: name of a numpy file containing 3*(nSims+1) element array
+        3 rows: PvalMinima,XvalMinima,SxEnsembleMin
+        fisrt (0th) column: SMICA values
+        the other columns: nSims
+        Default: optSxResult.npy
+    Returns:
+      nothing, but makes a plot
+  """
+
+  # load results
+  myPX = np.load(saveFile)
+  PvalMinima = myPX[0]
+  XvalMinima = myPX[1]
+  SxEnsembleMin = myPX[2]
+  nSims = myPX.shape[1]  # actually nSims+1 since SMICA is in 0 position
+
+  # plot
+  plt.plot(XvalMinima[0],PvalMinima[0]*100,marker='o',color='r')
+  for nResult in range(1,nSims):
+    plt.plot(XvalMinima[nResult],PvalMinima[nResult]*100,marker='^',color='b')
+  plt.xlim((-.2,.5))
+  plt.xlabel('x')
+  plt.ylabel('p-value (%)')
+  plt.show()
 
 
 ################################################################################
@@ -77,10 +115,26 @@ def randintTest(nSimsBig=100000,nPerEnsemble=10000,nEnsembles=1):
 
 
 ################################################################################
+# convert text file to numpy format for plotting
+def txt2npy(loadFile='optSxJKtext.txt',saveFile='optSxResult.npy'):
+  """
+  Purpose:
+    convert saved text file to numpy format for plotting with op2.makePlots,etc.
+  Inputs:
+    loadFile: (.txt)
+    saveFile: (.npy)
+  Outputs:
+    saves file saveFile
+  """
+  PvalMinima,XvalMinima,SxEnsembleMin = np.loadtxt(loadFile,unpack=True)
+  np.save(saveFile,np.vstack((PvalMinima,XvalMinima,SxEnsembleMin)))
+
+
+################################################################################
 # testing code
 
 def test(nEnsembles=2,nPerEnsemble=100,loadFile='SofXEnsemble_noFilt_100000.npy',
-         saveFile='JackKnife5000.npy',doPlot=False):
+         saveFile='JackKnife10000.npy',doPlot=False,saveText=True):
   """
     Purpose:
       program to create jackknife subensembles and optimize x, P(x)
@@ -96,9 +150,11 @@ def test(nEnsembles=2,nPerEnsemble=100,loadFile='SofXEnsemble_noFilt_100000.npy'
         Default: SofXEnsemble_noFilt_100000.npy
       saveFile: numpy file name to save P(x), S_x, x jackknifed array
         shape will be (nEnsembles+1,3); +1 for comparison point, 3 for p,x,s
-      np.save(saveFile,pxs_results[nEnsemble])
-        Default: JackKnife5000.npy
+        Default: JackKnife10000.npy
       doPlot: set to True to do plots for each subensemble
+      saveText: set to True to save (append) jackknife results to text file
+        filename: optSxJKtext.txt
+        Default: True
   """
 
   # prep for Figlet printing
@@ -123,20 +179,31 @@ def test(nEnsembles=2,nPerEnsemble=100,loadFile='SofXEnsemble_noFilt_100000.npy'
   PvalMinima = np.empty(nSims) # for return values
   XvalMinima = np.empty(nSims) # for return values
   pxs_results = np.empty((nEnsembles,3)) #3 for p,x,s
-  saveFile2  = "optSxResult.npy"
+  saveFile2  = 'optSxResult.npy'
+  textFile   = 'optSxJKtext.txt'
   
+  # peel off x values for new optSx version
+  SxValsArray = SxValsArrayBig[1:]
+
   # loop over subsamples
   doTime = True # to time the optimization run and print output
   startTimeOuter=time.time()
   for nEnsemble in range(nEnsembles):
     # sample for testing; 0 for x vals, 1 for SMICA
-    jackKnifeIndices = np.random.randint(2,nSimsBig+2,size=nPerEnsemble)
-    SxValsArray = np.vstack((sSMICA,SxValsArrayBig[jackKnifeIndices]))
+    #jackKnifeIndices = np.random.randint(2,nSimsBig+2,size=nPerEnsemble)
+    #SxValsArray = np.vstack((sSMICA,SxValsArrayBig[jackKnifeIndices]))
     #print SxValsArray.shape
     #return
 
+    # create random indices but keep SMICA at start
+    jackKnifeIndices = np.hstack((np.array([0],dtype=np.uint64),
+                          np.random.randint(1,nSimsBig+1,size=nPerEnsemble,dtype=np.uint64)))
+    print jackKnifeIndices
+    print SxValsArray.shape
+
     startTime = time.time()
-    op2.optSx(xVals,nXvals,SxValsArray,nSims,xStart,xEnd,nSearch,PvalMinima,XvalMinima)
+    op2.optSx(xVals,nXvals,SxValsArray,nSimsBig+1,xStart,xEnd,nSearch,PvalMinima,XvalMinima,
+              mySxSubset=jackKnifeIndices)
     timeInterval = time.time()-startTime
     if doTime: print 'time elapsed: ',int(timeInterval/60.),' minutes'
 
@@ -147,11 +214,15 @@ def test(nEnsembles=2,nPerEnsemble=100,loadFile='SofXEnsemble_noFilt_100000.npy'
       SofX = interp1d(xVals,SxValsArray[nSim])
       SxEnsembleMin[nSim] = SofX(XvalMinima[nSim])
 
-    # save S_x, P(x), x results
-    np.save(saveFile2,np.vstack((PvalMinima,XvalMinima,SxEnsembleMin)))
-
     # add result[0] into pxs_results array
     pxs_results[nEnsemble] = np.array((PvalMinima[0],XvalMinima[0],SxEnsembleMin[0]))
+
+    # save S_x, P(x), x results
+    np.save(saveFile2,np.vstack((PvalMinima,XvalMinima,SxEnsembleMin)))
+    if saveText:
+      f_handle=file(textFile,'a')
+      np.savetxt(f_handle,np.array([pxs_results[nEnsemble]]))
+      f_handle.close()
 
     if doPlot:
       #op2.makePlots(saveFile=saveFile2)

@@ -14,8 +14,9 @@
  *    apparently passing python numpy arrays into SxVecs using 
  *    python's ctypes ndpointer inadvertantly flattened the array.
  *    Fixed by rewriting to expect 1d array; ZK, 2016.09.28
- *    Modified xstart value to avoid oddness near x=-1.0; ZK, 2016.09.30
- *    Added xStart and xEnd to optSx function to constrain search range; ZK, 2016.10.06
+ *  Modified xstart value to avoid oddness near x=-1.0; ZK, 2016.09.30
+ *  Added xStart and xEnd to optSx function to constrain search range; ZK, 2016.10.06
+ *  Added mySxSubset, nSubset to optSx to select sublist; ZK, 2016.12.07  
  *
  */
 
@@ -102,7 +103,7 @@ double PvalOfX(double xVal, size_t nSim, const double *xVec, const double *SxVec
 
 }
 
-void optSx(const double *xVec, size_t xSize, const double *SxVecs, size_t nSims, double xStart, double xEnd, int nSearch, double *PvalMinima, double *XvalMinima)  {
+void optSx(const double *xVec, size_t xSize, const double *SxVecs, size_t nSims, double xStart, double xEnd, int nSearch, double *PvalMinima, double *XvalMinima, const size_t *mySxSubset, size_t nSubset)  {
   /*
    * Name:
    *  optSx
@@ -126,6 +127,8 @@ void optSx(const double *xVec, size_t xSize, const double *SxVecs, size_t nSims,
    *    must be <= 1 and > xStart
    *  nSearch: the number of points to search for along x
    *  PvalMinima,XvalMinima: arrays of length nSims to contain P(x) and x values
+   *  mySxSubset: an array of indices indicating which Sx vecs in SxVecs to use
+   *  nSubset: the length of mySxSubset array
    * Returns:
    *  void
    *  However, variables PvalMinma and XvalMinima will contain return values
@@ -151,9 +154,12 @@ void optSx(const double *xVec, size_t xSize, const double *SxVecs, size_t nSims,
     myXvals[n] = xStart + deltaX*(n/(double)(nSearch-1));
   }
 
-  //size_t nSim; // loop index
-  for (size_t nSim = 0; nSim < nSims; nSim++) {
-    printf("starting minimum Pval(x) search for sim %zd of %zd\n",nSim+1,nSims);
+  size_t nSim; // not the loop index anymore
+  //for (size_t nSim = 0; nSim < nSims; nSim++) {
+  for (size_t nIndex = 0; nIndex < nSubset; nIndex++) {
+    //printf("starting minimum Pval(x) search for sim %zd of %zd\n",nSim+1,nSims);
+    printf("starting minimum Pval(x) search for sim %zd of %zd\n",nIndex+1,nSubset);
+    nSim = mySxSubset[nIndex];  //redefined this way
     PvalMinima[nSim] = PvalOfX(xStart,nSim,xVec,SxVecs,xSize,nSims);
     XvalMinima[nSim] = xStart;
     for (int n = 1; n < nSearch; n++) { // can omit 0 due to above PvalOfX

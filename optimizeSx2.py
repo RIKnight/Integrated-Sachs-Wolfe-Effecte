@@ -37,6 +37,7 @@ Modification History:
   Removed titles from plots; ZK, 2016.11.17
   Added saveAndExit for extracting S(x) curves; ZK, 2016.11.17
   Separated optSx from test function; removed SofXList; ZK, 2016.11.20
+  Added parameter to optSx for sublist selection; ZK, 2016.12.07
   
 """
 
@@ -434,7 +435,8 @@ def makePlots(saveFile="optSxResult.npy",suppressC2=False):
 # the main functions: cOptSx
 
 # define cOptSx wrapper
-def optSx(xVals,nXvals,SxValsArray,nSims,xStart,xEnd,nSearch,PvalMinima,XvalMinima):
+def optSx(xVals,nXvals,SxValsArray,nSims,xStart,xEnd,nSearch,
+          PvalMinima,XvalMinima,mySxSubset=None):
   """
     Name:
       optSx
@@ -446,11 +448,21 @@ def optSx(xVals,nXvals,SxValsArray,nSims,xStart,xEnd,nSearch,PvalMinima,XvalMini
       if there are equal p-values along the range, the one with the lowest xVal
         will be reported
     Inputs:
-      see optimizeSx.c
+      most are used identically to those in optimizeSx.c
+      mySxSubset: (not the same as in optimizeSx.c)
+        Set to a list of indices to include in the optSx calculation
+        Default: None (indicates using all available SxVals; all indices included)
     Outputs:
       output is through parameters PvalMinima, XvalMinima
 
   """
+  # check for mySxSubset
+  if mySxSubset is None:
+    mySxSubset = np.arange(nSims,dtype=np.uint64) #for all indices in range
+    nSubset = nSims
+  else:
+    nSubset = mySxSubset.size
+
   lib = ctypes.cdll.LoadLibrary("../../C/optimizeSx.so")
   cOptSx = lib.optSx
   cOptSx.restype = None
@@ -459,9 +471,11 @@ def optSx(xVals,nXvals,SxValsArray,nSims,xStart,xEnd,nSearch,PvalMinima,XvalMini
                      ndpointer(ctypes.c_double, flags="C_CONTIGUOUS",ndim=2,shape=(nSims,nXvals)),
                      ctypes.c_size_t, ctypes.c_double, ctypes.c_double, ctypes.c_int,
                      ndpointer(ctypes.c_double, flags="C_CONTIGUOUS"),
-                     ndpointer(ctypes.c_double, flags="C_CONTIGUOUS")]
+                     ndpointer(ctypes.c_double, flags="C_CONTIGUOUS"),
+                     ndpointer(ctypes.c_size_t, flags="C_CONTIGUOUS"), ctypes.c_size_t]
   
-  cOptSx(xVals,nXvals,SxValsArray,nSims,xStart,xEnd,nSearch,PvalMinima,XvalMinima)
+  cOptSx(xVals,nXvals,SxValsArray,nSims,xStart,xEnd,nSearch,
+         PvalMinima,XvalMinima,mySxSubset,nSubset)
 
 
 ################################################################################
