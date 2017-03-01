@@ -38,6 +38,7 @@ Modification History:
   Added saveAndExit for extracting S(x) curves; ZK, 2016.11.17
   Separated optSx from test function; removed SofXList; ZK, 2016.11.20
   Added parameter to optSx for sublist selection; ZK, 2016.12.07
+  Added hardcoded kludge to PvalPval for error margin checking; ZK, 2016.12.13
   
 """
 
@@ -83,6 +84,9 @@ def PvalPval(saveFile="optSxResult.npy"):
   nUnder = 0 # will also include nEqual
   nOver = 0
   Psmica = PvalMinima[0]
+  #Psmica = 0.00360996390036 #read from output
+  #Psmica += 0.00019 #high end
+  #Psmica -= 0.00019 #low end
   print 'P-value for ensemble ',saveFile,': ',Psmica
   for Pval in (PvalMinima[1:]):
     if Psmica >= Pval:

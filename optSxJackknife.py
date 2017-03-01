@@ -20,6 +20,10 @@ Modification History:
     added saveText to test function; ZK, 2016.11.25
   Upgraded to new version of op2.optSx that handles m*n nested loops
     and sublists; ZK, 2016.12.07
+  Removed random selection of indices; replaced with start of list;
+    ZK, 2016.12.12
+  Added myKStest for distribution of jackknife results;
+    ZK, 2016.12.13
   
 """
 
@@ -115,6 +119,40 @@ def randintTest(nSimsBig=100000,nPerEnsemble=10000,nEnsembles=1):
 
 
 ################################################################################
+# test the distribution of jackknife results for Poissonity
+def myKStest(loadFile='optSxJKtext32.txt',nSims=10000):
+  """
+    no comment
+  """
+  from scipy.stats import poisson
+  from scipy.stats import kstest
+
+  # load data  
+  PvalMinima,XvalMinima,SxEnsembleMin = np.loadtxt(loadFile,unpack=True)
+  Pvals = PvalMinima[1:] #ditch SMICA
+  Xvals = XvalMinima[1:] #ditch SMICA
+  Svals = SxEnsembleMin[1:] #ditto
+
+  # find indices of two groupings of x values
+  gt = np.where(Xvals > 0)
+  lt = np.where(Xvals < 0)
+
+  # recover integer values that created p-values
+  pInts = np.rint(Pvals*nSims)
+
+  PmeanGt = np.mean(pInts[gt])
+  PmeanLt = np.mean(pInts[lt])
+  Pmean   = np.mean(pInts)
+
+  cdf = lambda k: poisson.cdf(k,np.rint(PmeanGt))
+
+  print 'closest integer to mean: ',np.rint(PmeanGt)
+  result = kstest(pInts[gt],cdf)
+
+  return result
+
+
+################################################################################
 # convert text file to numpy format for plotting
 def txt2npy(loadFile='optSxJKtext.txt',saveFile='optSxResult.npy'):
   """
@@ -133,7 +171,7 @@ def txt2npy(loadFile='optSxJKtext.txt',saveFile='optSxResult.npy'):
 ################################################################################
 # testing code
 
-def test(nEnsembles=2,nPerEnsemble=100,loadFile='SofXEnsemble_noFilt_100000.npy',
+def test(nEnsembles=1,nPerEnsemble=100,loadFile='SofXEnsemble_noFilt_100000.npy',
          saveFile='JackKnife10000.npy',doPlot=False,saveText=True):
   """
     Purpose:
@@ -196,8 +234,11 @@ def test(nEnsembles=2,nPerEnsemble=100,loadFile='SofXEnsemble_noFilt_100000.npy'
     #return
 
     # create random indices but keep SMICA at start
-    jackKnifeIndices = np.hstack((np.array([0],dtype=np.uint64),
-                          np.random.randint(1,nSimsBig+1,size=nPerEnsemble,dtype=np.uint64)))
+    #jackKnifeIndices = np.hstack((np.array([0],dtype=np.uint64),
+    #                      np.random.randint(1,nSimsBig+1,size=nPerEnsemble,dtype=np.uint64)))
+
+    # instead of random indices use start of list
+    jackKnifeIndices = np.arange(nPerEnsemble+1,dtype=np.uint64)
     print jackKnifeIndices
     print SxValsArray.shape
 
