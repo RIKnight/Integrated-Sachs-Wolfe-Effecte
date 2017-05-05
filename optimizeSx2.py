@@ -39,6 +39,7 @@ Modification History:
   Separated optSx from test function; removed SofXList; ZK, 2016.11.20
   Added parameter to optSx for sublist selection; ZK, 2016.12.07
   Added hardcoded kludge to PvalPval for error margin checking; ZK, 2016.12.13
+  Made bigger axis labels on plots for publication; ZK, 2017.04.30
   
 """
 
@@ -150,7 +151,7 @@ def makeC2Plot(saveFile='optSxC2.npy'):
   return pVal
 
 
-def makeCornerPlotSmall(saveFile="optSxResult.npy",suppressC2=False):
+def makeCornerPlotSmall(saveFile="optSxResult.npy",suppressC2=False,myfs=16):
   """
     Name:
       makeCornerPlotSmall
@@ -165,6 +166,8 @@ def makeCornerPlotSmall(saveFile="optSxResult.npy",suppressC2=False):
         Default: optSxResult.npy
       suppressC2: set to True if this was used in creating data
         Default: False
+      myfs: fontsize for axis labels
+        Default: 16
     Returns:
       nothing, but makes several plots
   """
@@ -187,6 +190,7 @@ def makeCornerPlotSmall(saveFile="optSxResult.npy",suppressC2=False):
   # make corner plot
   figure = corner.corner(toPlot,labels=[r"$\log_{10} S_x$", #r"$\log_{10} (S_x / \Delta x)$",
                                         r"$\log_{10}$ P-value",r"x value"],
+                         label_kwargs={'fontsize':myfs},
                          show_titles=False,
                          truths=[np.log10(SxEnsembleMin[0]),#maknp.log10(SxEnsembleMinDensity[0]),
                                  np.log10(PvalMinima[0]),XvalMinima[0]]  )
@@ -195,7 +199,7 @@ def makeCornerPlotSmall(saveFile="optSxResult.npy",suppressC2=False):
   print 'for SMICA: x = ',XvalMinima[0],', S_x = ',SxEnsembleMin[0],', P(x) = ',PvalMinima[0]
 
 
-def makeCornerPlot(saveFile="optSxResult.npy",suppressC2=False):
+def makeCornerPlot(saveFile="optSxResult.npy",suppressC2=False,myfs=16):
   """
     Name:
       makeCornerPlot
@@ -209,6 +213,8 @@ def makeCornerPlot(saveFile="optSxResult.npy",suppressC2=False):
         Default: optSxResult.npy
       suppressC2: set to True if this was used in creating data
         Default: False
+      myfs: fontsize for axis labels
+        Default: 16
     Returns:
       nothing, but makes several plots
   """
@@ -231,6 +237,7 @@ def makeCornerPlot(saveFile="optSxResult.npy",suppressC2=False):
   # make corner plot
   figure = corner.corner(toPlot,labels=[r"$\log_{10} S_x$", r"$\log_{10} (S_x / \Delta x)$",
                                         r"$\log_{10}$ P-value",r"x value"],
+                         label_kwargs={'fontsize':myfs},
                          show_titles=False,
                          truths=[np.log10(SxEnsembleMin[0]),np.log10(SxEnsembleMinDensity[0]),
                                  np.log10(PvalMinima[0]),XvalMinima[0]]  )
@@ -245,6 +252,7 @@ def makeCornerPlot(saveFile="optSxResult.npy",suppressC2=False):
   # make corner plot
   figure = corner.corner(toPlot,labels=[r"$\log_{10} S_x$", r"$\log_{10} (S_x / \Delta x)$",
                                         r"P-value",r"x value"],
+                         label_kwargs={'fontsize':myfs},
                          show_titles=False,
                          truths=[np.log10(SxEnsembleMin[0]),np.log10(SxEnsembleMinDensity[0]),
                                  PvalMinima[0],XvalMinima[0]]  )

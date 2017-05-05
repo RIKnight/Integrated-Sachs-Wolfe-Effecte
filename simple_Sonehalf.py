@@ -29,6 +29,7 @@ Modification History:
   Added nGrid, bw_method, axSize parameters for plot2Ddist; ZK, 2017.02.24
   Added second call to plot2Ddist and created inset zoom; ZK, 2017.02.27
   Added pValue for calculation of C2, Sonehalf p-values; ZK, 2017.02.28
+  Made bigger axis labels on plots for publication; ZK, 2017.04.30
   
 """
 
@@ -247,8 +248,9 @@ def test(nSims=100,lmax=100,lmin=2,partialMax=4,useCLASS=1,useLensing=1,
 
   plt.gca().set_xscale("log")
   plt.legend()
-  plt.xlabel(r'$S_{1/2} (\mu K^4)$')
-  plt.ylabel('Counts')
+  myfs = 16 # font size for labels
+  plt.xlabel(r'$S_{1/2} (\mu K^4)$',fontsize=myfs)
+  plt.ylabel('Counts',fontsize=myfs)
   plt.xlim((500,10**6))
   if cutSky:
     sName = ' cut-sky'
@@ -273,8 +275,9 @@ def test(nSims=100,lmax=100,lmin=2,partialMax=4,useCLASS=1,useLensing=1,
   plt.hist2d(log10SonehalfEnsemble,C2Ensemble,bins=[myBinsLog10S,myBinsC2],cmap=cmap)
   plt.plot(SMICAvals[0],SMICAvals[1],'cD')
   plt.colorbar()
-  plt.xlabel(SonehalfLabel)
-  plt.ylabel(C2Label)
+  #myfs = 16 # font size for labels
+  plt.xlabel(SonehalfLabel,fontsize=myfs)
+  plt.ylabel(C2Label,fontsize=myfs)
   plt.show()
 
   
@@ -303,8 +306,9 @@ def test(nSims=100,lmax=100,lmin=2,partialMax=4,useCLASS=1,useLensing=1,
   plt.colorbar()
   #plt.title('do i want a title here?')
   plt.xlim(2.8,5.8)
-  plt.xlabel(SonehalfLabel)
-  plt.ylabel(C2Label)
+  #myfs = 16 # font size for labels
+  plt.xlabel(SonehalfLabel,fontsize=myfs)
+  plt.ylabel(C2Label,fontsize=myfs)
   plt.plot(SMICAvals[0],SMICAvals[1],'cD')
   plt.show()
 
@@ -315,7 +319,7 @@ def test(nSims=100,lmax=100,lmin=2,partialMax=4,useCLASS=1,useLensing=1,
   toPlot = toPlot.T
   figure = corner.corner(toPlot,labels=[SonehalfLabel,C2Label],
                          show_titles=False,truths=SMICAvals,
-                         range=((2.5,6),(0,3000)) )
+                         range=((2.5,6),(0,3000)),label_kwargs={'fontsize':myfs} )
   plt.show()
 
 

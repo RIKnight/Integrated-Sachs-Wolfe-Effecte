@@ -27,6 +27,7 @@ Modification History:
   Added bw_method, axSize to plot2Ddist parameter list; ZK, 2017.02.24
   Added nstart to plot2Ddist parameter list; Added returnfigure; 
     ZK, 2017.02.27
+  Added myfs for fontsize control; ZK, 2017.04.30
 
 """
 
@@ -105,7 +106,7 @@ def plot2Ddist(variables, axeslist=None, truevalues=None,
                contourKDEthin=1, contourNGrid=100, 
                contourFractions=[0.6827, 0.9545, 0.9973],
                labelcontours=True, returncontours=False, returnfigure=False,
-               bw_method='scott', axSize="50%", nstart=200,
+               bw_method='scott', axSize="50%", nstart=200, myfs = 16,
                scatterstyle={}, histstyle={}, contourstyle={}, **styleArgs):
     """Plot joint distribution of two variables, with marginal histograms.
 
@@ -189,6 +190,10 @@ def plot2Ddist(variables, axeslist=None, truevalues=None,
 
     nstart -- float
         controls number of contours generated prior to interpolation
+
+    myfs -- int
+        fontsize for plot axis labels
+        Default: 16
  
     styleArgs --
         leftover arguments are passed to both the plot and hist commands
@@ -292,10 +297,11 @@ def plot2Ddist(variables, axeslist=None, truevalues=None,
         ax2.set_ylim(bottom=0)
         ax3.set_xlim(left=0)
 
+    #myfs = 16 # font size for labels
     if labels[0] is not None:
-        ax1.set_xlabel(labels[0])
+        ax1.set_xlabel(labels[0],fontsize=myfs)
     if labels[1] is not None:
-        ax1.set_ylabel(labels[1])
+        ax1.set_ylabel(labels[1],fontsize=myfs)
         
     if plotcontours and labelcontours:
         frac_label_contours(x, y, contours)

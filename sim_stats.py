@@ -42,6 +42,7 @@ Modification History:
     commented out anafast section of test function; ZK, 2016.11.10
   Added R1 option to getSMICA; ZK, 2016.11.16
   Removed titles from plots; ZK, 2016.11.17
+  Made bigger axis labels on plots for publication; ZK, 2017.04.30
 
 """
 
@@ -203,7 +204,7 @@ def makePlots(saveFile1="simStatResultC.npy",saveFile2="simStatC_SMICA.npy",
       (would be better if it were in the save file but it's not)
       Default: 100
   outputs:
-    returns p-values for full sky, cut sky
+    returns p-values for full-sky, cut-sky
     prints p-values for S_1/2
   """
   # load results
@@ -233,13 +234,14 @@ def makePlots(saveFile1="simStatResultC.npy",saveFile2="simStatC_SMICA.npy",
   plt.plot(thetaArray,avgEnsembleFull,label='sim. ensemble average (no mask)',linestyle='--',linewidth=2)
   plt.fill_between(thetaArray,avgEnsembleFull+stdEnsembleFull,
                    avgEnsembleFull-stdEnsembleFull,alpha=0.25,
-                   label='simulation 1sigma envelope')
-  #plt.plot(thetaArray2,C_SMICA,label='SMICA R2 (inpainted,anafast)')
-  #plt.plot(thetaArray2sp,C_SMICAsp,label='SMICA R2 (inpainted,spice)')
-  plt.plot(thetaArray2sp,C_SMICAsp,label='SMICA R2 (inpainted)',linewidth=2)
+                   label="simulation $1\sigma$ envelope")
+  #plt.plot(thetaArray2,C_SMICA,label='SMICA PR2 (inpainted,anafast)')
+  #plt.plot(thetaArray2sp,C_SMICAsp,label='SMICA PR2 (inpainted,spice)')
+  plt.plot(thetaArray2sp,C_SMICAsp,label='SMICA PR2 (inpainted)',linewidth=2)
 
-  plt.xlabel(r'Angular Separation $\theta$ (degrees)')
-  plt.ylabel(r'$C(\theta)$')
+  myfs = 16 # font size for labels
+  plt.xlabel(r'Angular Separation $\theta$ (degrees)',fontsize=myfs)
+  plt.ylabel(r'$C(\theta) (\mu K^2)$',fontsize=myfs)
   #plt.title('whole-sky covariance of '+str(nSims)+' simulated CMBs, lmax='+str(lmax))
   plt.ylim([-500,1000])
   plt.plot([0,180],[0,0],color='k') #horizontal line
@@ -250,13 +252,14 @@ def makePlots(saveFile1="simStatResultC.npy",saveFile2="simStatC_SMICA.npy",
   plt.plot(thetaArray,avgEnsembleCut,label='sim. ensemble average (masked)',linestyle='--',linewidth=2)
   plt.fill_between(thetaArray,avgEnsembleCut+stdEnsembleCut,
                    avgEnsembleCut-stdEnsembleCut,alpha=0.25,
-                   label='simulation 1sigma envelope')
-  #plt.plot(thetaArray2,C_SMICAmasked,label='SMICA R2 (masked ,anafast)')
-  #plt.plot(thetaArray2sp,C_SMICAmaskedsp,label='SMICA R2 (masked ,spice)')
-  plt.plot(thetaArray2sp,C_SMICAmaskedsp,label='SMICA R2 (masked)',linewidth=2)
+                   label='simulation $1\sigma$ envelope')
+  #plt.plot(thetaArray2,C_SMICAmasked,label='SMICA PR2 (masked ,anafast)')
+  #plt.plot(thetaArray2sp,C_SMICAmaskedsp,label='SMICA PR2 (masked ,spice)')
+  plt.plot(thetaArray2sp,C_SMICAmaskedsp,label='SMICA PR2 (masked)',linewidth=2)
   
-  plt.xlabel(r'Angular Separation $\theta$ (degrees)')
-  plt.ylabel(r'$C(\theta)$')
+  #myfs = 16 # font size for labels
+  plt.xlabel(r'Angular Separation $\theta$ (degrees)',fontsize=myfs)
+  plt.ylabel(r'$C(\theta) (\mu K^2)$',fontsize=myfs)
   #plt.title('cut-sky covariance of '+str(nSims)+' simulated CMBs, lmax='+str(lmax))
   plt.ylim([-500,1000])
   plt.plot([0,180],[0,0],color='k') #horizontal line
@@ -270,8 +273,8 @@ def makePlots(saveFile1="simStatResultC.npy",saveFile2="simStatC_SMICA.npy",
   # whole sky
   plt.axvline(x=sEnsembleFull[0],color='b',linewidth=3,label='SMICA inpainted')
   #plt.axvline(x=sEnsembleCut[0] ,color='g',linewidth=3,label='SMICA masked')
-  plt.hist(sEnsembleFull[1:],bins=myBins,color='b',histtype='step',label='full sky')
-  #plt.hist(sEnsembleCut[1:], bins=myBins,color='g',histtype='step',label='cut sky')
+  plt.hist(sEnsembleFull[1:],bins=myBins,color='b',histtype='step',label='full-sky sims')
+  #plt.hist(sEnsembleCut[1:], bins=myBins,color='g',histtype='step',label='cut-sky sims')
 
   plt.gca().set_xscale("log")
   plt.legend()
@@ -285,13 +288,14 @@ def makePlots(saveFile1="simStatResultC.npy",saveFile2="simStatC_SMICA.npy",
   # cut sky
   #plt.axvline(x=sEnsembleFull[0],color='b',linewidth=3,label='SMICA inpainted')
   plt.axvline(x=sEnsembleCut[0] ,color='g',linewidth=3,label='SMICA masked')
-  #plt.hist(sEnsembleFull[1:],bins=myBins,color='b',histtype='step',label='full sky')
-  plt.hist(sEnsembleCut[1:], bins=myBins,color='g',histtype='step',label='cut sky')
+  #plt.hist(sEnsembleFull[1:],bins=myBins,color='b',histtype='step',label='full-sky sims')
+  plt.hist(sEnsembleCut[1:], bins=myBins,color='g',histtype='step',label='cut-sky sims')
 
   plt.gca().set_xscale("log")
   plt.legend()
-  plt.xlabel(r'$S_{1/2} (\mu K^4)$')
-  plt.ylabel('Counts')
+  #myfs = 16 # font size for labels
+  plt.xlabel(r'$S_{1/2} (\mu K^4)$',fontsize=myfs)
+  plt.ylabel('Counts',fontsize=myfs)
   #plt.title(r'$S_{1/2}$ of '+str(nSims)+' simulated CMBs')
   plt.xlim((500,10**6))
   plt.show()
@@ -299,13 +303,14 @@ def makePlots(saveFile1="simStatResultC.npy",saveFile2="simStatC_SMICA.npy",
   # whole and cut together
   plt.axvline(x=sEnsembleFull[0],color='b',linewidth=3,label='SMICA inpainted')
   plt.axvline(x=sEnsembleCut[0] ,color='g',linewidth=3,label='SMICA masked')
-  plt.hist(sEnsembleFull[1:],bins=myBins,color='b',histtype='step',label='full sky')
-  plt.hist(sEnsembleCut[1:], bins=myBins,color='g',histtype='step',label='cut sky')
+  plt.hist(sEnsembleFull[1:],bins=myBins,color='b',histtype='step',label='full-sky sims')
+  plt.hist(sEnsembleCut[1:], bins=myBins,color='g',histtype='step',label='cut-sky sims')
 
   plt.gca().set_xscale("log")
   plt.legend()
-  plt.xlabel(r'$S_{1/2} (\mu K^4)$')
-  plt.ylabel('Counts')
+  #myfs = 16 # font size for labels
+  plt.xlabel(r'$S_{1/2} (\mu K^4)$',fontsize=myfs)
+  plt.ylabel('Counts',fontsize=myfs)
   #plt.title(r'$S_{1/2}$ of '+str(nSims)+' simulated CMBs')
   plt.xlim((500,10**6))
   plt.show()
