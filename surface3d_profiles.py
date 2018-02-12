@@ -1,4 +1,12 @@
 #! /usr/bin/env python
+"""
+  Name: surface3d_profiles
+  Purpose:
+    plotting ISW profiles as surfaces; functions of R and r
+  Modification History:
+    Written by Z Knight; ~2017
+
+"""
 
 from mpl_toolkits.mplot3d import Axes3D
 from matplotlib import cm
